@@ -486,6 +486,90 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
+app.get('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await ensureProductImagesColorColumn();
+    await ensureProductOwnerColumn();
+    const pool = await getPool();
+
+    const productResult = await pool
+      .request()
+      .input('id', sql.UniqueIdentifier, id)
+      .query(
+        `SELECT p.Id, p.OwnerId, p.Name, p.Category, p.[Description], p.Price, p.DiscountPercent, p.Stock,
+                COALESCE(s.SoldCount, 0) AS SoldCount
+         FROM dbo.Products p
+         LEFT JOIN (
+           SELECT oi.ProductId, SUM(oi.Quantity) AS SoldCount
+           FROM dbo.OrderItems oi
+           INNER JOIN dbo.Orders o ON o.Id = oi.OrderId
+           WHERE LOWER(o.[Status]) <> 'cancelled'
+           GROUP BY oi.ProductId
+         ) s ON s.ProductId = p.Id
+         WHERE p.Id = @id AND p.IsActive = 1`
+      );
+
+    if (productResult.recordset.length === 0) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    const product = productResult.recordset[0];
+    const productKey = String(product.Id).toLowerCase();
+
+    const imagesResult = await pool
+      .request()
+      .input('productId', sql.UniqueIdentifier, id)
+      .query(
+        `SELECT pi.ProductId, pi.ImageUrl, pi.ColorHex, pi.SortOrder, pi.Id
+         FROM dbo.ProductImages pi
+         WHERE pi.ProductId = @productId
+         ORDER BY pi.SortOrder ASC, pi.Id ASC`
+      );
+
+    const variantsResult = await pool
+      .request()
+      .input('productId', sql.UniqueIdentifier, id)
+      .query(
+        `SELECT pv.ProductId, pv.SizeLabel, pv.Stock, pv.ColorHex
+         FROM dbo.ProductVariants pv
+         WHERE pv.ProductId = @productId
+         ORDER BY pv.SizeLabel ASC`
+      );
+
+    const imageUrls = imagesResult.recordset.map((row) => row.ImageUrl);
+    const colorImagesByProduct = {};
+    for (const row of imagesResult.recordset) {
+      const colorHex = String(row.ColorHex || '').trim().toUpperCase();
+      if (colorHex) {
+        if (!colorImagesByProduct[colorHex]) colorImagesByProduct[colorHex] = [];
+        colorImagesByProduct[colorHex].push(row.ImageUrl);
+      }
+    }
+
+    const sizeStocksByProduct = {};
+    for (const row of variantsResult.recordset) {
+      const size = String(row.SizeLabel || '').trim().toUpperCase();
+      const stock = Number(row.Stock || 0);
+      if (size) {
+        sizeStocksByProduct[size] = (sizeStocksByProduct[size] || 0) + stock;
+      }
+    }
+
+    const response = {
+      ...product,
+      ImageUrls: imageUrls,
+      ImageUrl: imageUrls[0] || null,
+      SizeStocks: sizeStocksByProduct,
+      ColorImages: colorImagesByProduct,
+    };
+
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 app.put('/api/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
