@@ -157,4 +157,62 @@ class ProductService {
       };
     }
   }
+
+  /// Advanced search with filters
+  Future<Map<String, dynamic>> searchAdvanced({
+    String query = '',
+    double? minPrice,
+    double? maxPrice,
+    String? categoryId,
+    bool inStockOnly = false,
+    String sortBy = 'newest',
+    int page = 1,
+    int limit = 50,
+  }) async {
+    try {
+      final queryParams = {
+        'q': query,
+        'inStockOnly': inStockOnly.toString(),
+        'sortBy': sortBy,
+        'page': page.toString(),
+        'limit': limit.toString(),
+      };
+
+      if (minPrice != null) {
+        queryParams['minPrice'] = minPrice.toString();
+      }
+      if (maxPrice != null) {
+        queryParams['maxPrice'] = maxPrice.toString();
+      }
+      if (categoryId != null && categoryId.isNotEmpty) {
+        queryParams['categoryId'] = categoryId;
+      }
+
+      final response = await dio.get(
+        '$baseUrl/api/products/search/advanced',
+        queryParameters: queryParams,
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final data = response.data['data'] as List;
+        final products = data
+            .map((item) => Product.fromJson(item as Map<String, dynamic>))
+            .toList();
+        return {
+          'success': true,
+          'data': products,
+          'pagination': response.data['pagination'],
+        };
+      }
+      return {
+        'success': false,
+        'error': 'Failed to search products',
+      };
+    } on DioException catch (e) {
+      return {
+        'success': false,
+        'error': e.response?.data['message'] ?? e.message,
+      };
+    }
+  }
 }

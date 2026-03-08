@@ -923,6 +923,177 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
+// Advanced Product Search with Filters
+app.get("/api/products/search/advanced", async (req, res) => {
+  try {
+    const {
+      q = "",
+      minPrice = 0,
+      maxPrice = 999999999,
+      categoryId = null,
+      inStockOnly = false,
+      sortBy = "newest", // newest, price-asc, price-desc, rating
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+    const minPriceNum = Math.max(0, parseFloat(minPrice) || 0);
+    const maxPriceNum = Math.max(minPriceNum, parseFloat(maxPrice) || 999999999);
+    const searchQuery = String(q || "").trim();
+    const inStock = String(inStockOnly).toLowerCase() === "true";
+
+    const pool = await getPool();
+
+    // Build WHERE clauses dynamically
+    const whereClauses = ["p.IsActive = 1"];
+
+    // Search by name or description
+    if (searchQuery) {
+      whereClauses.push(
+        `(LOWER(p.Name) LIKE @searchQuery OR LOWER(p.[Description]) LIKE @searchQuery)`,
+      );
+    }
+
+    // Price range filter
+    whereClauses.push("p.Price BETWEEN @minPrice AND @maxPrice");
+
+    // Category filter
+    if (categoryId) {
+      whereClauses.push("p.Category = @categoryId");
+    }
+
+    // In stock filter
+    if (inStock) {
+      whereClauses.push("p.Stock > 0");
+    }
+
+    // Determine sort order
+    let orderByClause = "p.CreatedAt DESC"; // default newest
+    if (sortBy === "price-asc") {
+      orderByClause = "p.Price ASC";
+    } else if (sortBy === "price-desc") {
+      orderByClause = "p.Price DESC";
+    } else if (sortBy === "rating") {
+      orderByClause = "COALESCE(r.AvgRating, 0) DESC, SoldCount DESC";
+    }
+
+    const whereSQL = whereClauses.join(" AND ");
+
+    // Get total count
+    const countRequest = pool.request();
+    countRequest.input("minPrice", sql.Decimal(18, 2), minPriceNum);
+    countRequest.input("maxPrice", sql.Decimal(18, 2), maxPriceNum);
+    if (searchQuery) {
+      countRequest.input("searchQuery", sql.NVarChar(255), `%${searchQuery}%`);
+    }
+    if (categoryId) {
+      countRequest.input("categoryId", sql.NVarChar(150), categoryId);
+    }
+
+    const countResult = await countRequest.query(
+      `SELECT COUNT(*) AS total FROM dbo.Products p WHERE ${whereSQL}`,
+    );
+    const total = countResult.recordset[0]?.total || 0;
+
+    // Get paginated results
+    const queryRequest = pool.request();
+    queryRequest.input("minPrice", sql.Decimal(18, 2), minPriceNum);
+    queryRequest.input("maxPrice", sql.Decimal(18, 2), maxPriceNum);
+    queryRequest.input("offset", sql.Int, offset);
+    queryRequest.input("limit", sql.Int, limitNum);
+    if (searchQuery) {
+      queryRequest.input("searchQuery", sql.NVarChar(255), `%${searchQuery}%`);
+    }
+    if (categoryId) {
+      queryRequest.input("categoryId", sql.NVarChar(150), categoryId);
+    }
+
+    const productsResult = await queryRequest.query(
+      `SELECT p.Id, p.OwnerId, p.Name, p.Category, p.[Description], p.Price, p.DiscountPercent, p.Stock,
+              COALESCE(s.SoldCount, 0) AS SoldCount,
+              COALESCE(r.AvgRating, 0) AS AvgRating,
+              COALESCE(r.ReviewCount, 0) AS ReviewCount
+       FROM dbo.Products p
+       LEFT JOIN (
+         SELECT oi.ProductId, SUM(oi.Quantity) AS SoldCount
+         FROM dbo.OrderItems oi
+         INNER JOIN dbo.Orders o ON o.Id = oi.OrderId
+         WHERE LOWER(o.[Status]) <> 'cancelled'
+         GROUP BY oi.ProductId
+       ) s ON s.ProductId = p.Id
+       LEFT JOIN (
+         SELECT ProductId, AVG(CAST(Rating AS FLOAT)) AS AvgRating, COUNT(*) AS ReviewCount
+         FROM dbo.ProductReviews
+         WHERE Rating > 0
+         GROUP BY ProductId
+       ) r ON r.ProductId = p.Id
+       WHERE ${whereSQL}
+       ORDER BY ${orderByClause}
+       OFFSET @offset ROWS
+       FETCH NEXT @limit ROWS ONLY`,
+    );
+
+    const imagesByProductId = new Map();
+    if (productsResult.recordset.length > 0) {
+      const productIds = productsResult.recordset
+        .map((p) => p.Id)
+        .filter(Boolean);
+
+      if (productIds.length > 0) {
+        const imagesRequest = pool.request();
+        const placeholders = productIds
+          .map((_, idx) => `@id${idx}`)
+          .join(",");
+        productIds.forEach((id, idx) => {
+          imagesRequest.input(`id${idx}`, sql.UniqueIdentifier, id);
+        });
+
+        const imagesResult = await imagesRequest.query(
+          `SELECT ProductId, ImageUrl, SortOrder
+           FROM dbo.ProductImages
+           WHERE ProductId IN (${placeholders})
+           ORDER BY ProductId, SortOrder ASC, Id ASC`,
+        );
+
+        for (const image of imagesResult.recordset) {
+          const key = String(image.ProductId).toLowerCase();
+          if (!imagesByProductId.has(key)) {
+            imagesByProductId.set(key, []);
+          }
+          imagesByProductId.get(key).push(image.ImageUrl);
+        }
+      }
+    }
+
+    const products = productsResult.recordset.map((product) => {
+      const key = String(product.Id).toLowerCase();
+      const imageUrls = imagesByProductId.get(key) || [];
+      return {
+        ...product,
+        ImageUrl: imageUrls[0] || null,
+        ImageUrls: imageUrls,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: products,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (error) {
+    console.error("Search error:", error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 app.put("/api/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
