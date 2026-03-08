@@ -89,6 +89,66 @@ async function ensureProductReviewsTable() {
   );
 }
 
+async function ensureReviewHelpfulVotesTable() {
+  const pool = await getPool();
+  await pool.request().query(
+    `IF OBJECT_ID('dbo.ReviewHelpfulVotes', 'U') IS NULL
+     BEGIN
+       CREATE TABLE dbo.ReviewHelpfulVotes (
+         Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_ReviewHelpfulVotes PRIMARY KEY,
+         ReviewId UNIQUEIDENTIFIER NOT NULL,
+         UserId UNIQUEIDENTIFIER NOT NULL,
+         CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_ReviewHelpfulVotes_CreatedAt DEFAULT SYSUTCDATETIME(),
+         CONSTRAINT FK_ReviewHelpfulVotes_Review FOREIGN KEY (ReviewId) REFERENCES dbo.ProductReviews(Id),
+         CONSTRAINT FK_ReviewHelpfulVotes_User FOREIGN KEY (UserId) REFERENCES dbo.Users(Id),
+         CONSTRAINT UQ_ReviewHelpfulVotes_Review_User UNIQUE (ReviewId, UserId)
+       );
+     END`,
+  );
+}
+
+async function ensureNotificationsTable() {
+  const pool = await getPool();
+  await pool.request().query(
+    `IF OBJECT_ID('dbo.UserNotifications', 'U') IS NULL
+     BEGIN
+       CREATE TABLE dbo.UserNotifications (
+         Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_UserNotifications PRIMARY KEY,
+         UserId UNIQUEIDENTIFIER NOT NULL,
+         [Type] NVARCHAR(50) NOT NULL,
+         Title NVARCHAR(150) NOT NULL,
+         [Message] NVARCHAR(500) NOT NULL,
+         RefId UNIQUEIDENTIFIER NULL,
+         IsRead BIT NOT NULL CONSTRAINT DF_UserNotifications_IsRead DEFAULT 0,
+         CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_UserNotifications_CreatedAt DEFAULT SYSUTCDATETIME(),
+         ReadAt DATETIME2(0) NULL,
+         CONSTRAINT FK_UserNotifications_Users FOREIGN KEY (UserId) REFERENCES dbo.Users(Id)
+       );
+
+       CREATE INDEX IX_UserNotifications_UserId_CreatedAt
+       ON dbo.UserNotifications(UserId, CreatedAt DESC);
+     END`,
+  );
+}
+
+async function createUserNotification({ userId, type, title, message, refId }) {
+  if (!userId || !type || !title || !message) return;
+  await ensureNotificationsTable();
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("id", sql.UniqueIdentifier, createGuid())
+    .input("userId", sql.UniqueIdentifier, String(userId))
+    .input("type", sql.NVarChar(50), String(type))
+    .input("title", sql.NVarChar(150), String(title))
+    .input("message", sql.NVarChar(500), String(message))
+    .input("refId", sql.UniqueIdentifier, refId || null)
+    .query(
+      `INSERT INTO dbo.UserNotifications(Id, UserId, [Type], Title, [Message], RefId, IsRead)
+       VALUES(@id, @userId, @type, @title, @message, @refId, 0)`,
+    );
+}
+
 function createGuid() {
   if (typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -1417,19 +1477,41 @@ app.delete(
 app.get("/api/products/:id/reviews", async (req, res) => {
   try {
     const { id } = req.params;
+    const viewerUserId = String(req.query.userId || "").trim();
+    const sortBy = String(req.query.sortBy || "newest")
+      .trim()
+      .toLowerCase();
+    let orderByClause = "pr.CreatedAt DESC";
+    if (sortBy === "rating") {
+      orderByClause = "pr.Rating DESC, pr.CreatedAt DESC";
+    } else if (sortBy === "helpful") {
+      orderByClause = "COALESCE(hv.HelpfulCount, 0) DESC, pr.CreatedAt DESC";
+    }
+
     await ensureProductReviewsTable();
+    await ensureReviewHelpfulVotesTable();
 
     const pool = await getPool();
     const result = await pool
       .request()
       .input("productId", sql.UniqueIdentifier, id)
+      .input("viewerUserId", sql.UniqueIdentifier, viewerUserId || null)
       .query(
-        `SELECT pr.Id, pr.ProductId, pr.UserId, pr.Rating, pr.Comment, pr.CreatedAt,
-                u.FullName AS UserName
+        `SELECT pr.Id, pr.ProductId, pr.UserId, pr.Rating, pr.Comment, pr.CreatedAt, pr.UpdatedAt,
+                u.FullName AS UserName,
+                COALESCE(hv.HelpfulCount, 0) AS HelpfulCount,
+                CASE WHEN uv.Id IS NULL THEN CAST(0 AS BIT) ELSE CAST(1 AS BIT) END AS IsHelpfulByMe
          FROM dbo.ProductReviews pr
          INNER JOIN dbo.Users u ON u.Id = pr.UserId
+         LEFT JOIN (
+           SELECT ReviewId, COUNT(*) AS HelpfulCount
+           FROM dbo.ReviewHelpfulVotes
+           GROUP BY ReviewId
+         ) hv ON hv.ReviewId = pr.Id
+         LEFT JOIN dbo.ReviewHelpfulVotes uv
+           ON uv.ReviewId = pr.Id AND uv.UserId = @viewerUserId
          WHERE pr.ProductId = @productId
-         ORDER BY pr.CreatedAt DESC`,
+         ORDER BY ${orderByClause}`,
       );
 
     res.json(result.recordset);
@@ -1550,10 +1632,28 @@ app.post("/api/products/:id/reviews", async (req, res) => {
                UpdatedAt = SYSUTCDATETIME()
            WHERE Id = @id`,
         );
+
+      const productOwnerResult = await pool
+        .request()
+        .input("productId", sql.UniqueIdentifier, id)
+        .query(`SELECT TOP 1 OwnerId, Name FROM dbo.Products WHERE Id = @productId`);
+
+      const ownerId = String(productOwnerResult.recordset[0]?.OwnerId || "").trim();
+      const productName = String(productOwnerResult.recordset[0]?.Name || "Sản phẩm").trim();
+      if (ownerId && ownerId !== normalizedUserId) {
+        await createUserNotification({
+          userId: ownerId,
+          type: "review_updated",
+          title: "Đánh giá đã được cập nhật",
+          message: `Một khách hàng vừa cập nhật đánh giá cho ${productName}.`,
+          refId: id,
+        });
+      }
     } else {
+      const reviewId = createGuid();
       await pool
         .request()
-        .input("id", sql.UniqueIdentifier, createGuid())
+        .input("id", sql.UniqueIdentifier, reviewId)
         .input("productId", sql.UniqueIdentifier, id)
         .input("userId", sql.UniqueIdentifier, normalizedUserId)
         .input("rating", sql.Int, numericRating)
@@ -1562,9 +1662,295 @@ app.post("/api/products/:id/reviews", async (req, res) => {
           `INSERT INTO dbo.ProductReviews(Id, ProductId, UserId, Rating, Comment)
            VALUES(@id, @productId, @userId, @rating, @comment)`,
         );
+
+      const productOwnerResult = await pool
+        .request()
+        .input("productId", sql.UniqueIdentifier, id)
+        .query(`SELECT TOP 1 OwnerId, Name FROM dbo.Products WHERE Id = @productId`);
+
+      const ownerId = String(productOwnerResult.recordset[0]?.OwnerId || "").trim();
+      const productName = String(productOwnerResult.recordset[0]?.Name || "Sản phẩm").trim();
+      if (ownerId && ownerId !== normalizedUserId) {
+        await createUserNotification({
+          userId: ownerId,
+          type: "review_created",
+          title: "Đánh giá mới",
+          message: `Một khách hàng vừa để lại đánh giá mới cho ${productName}.`,
+          refId: reviewId,
+        });
+      }
     }
 
     res.status(201).json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/api/reviews/:reviewId", async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const { userId, rating, comment } = req.body;
+    const normalizedUserId = String(userId || "").trim();
+    const numericRating = Number(rating || 0);
+    const normalizedComment = String(comment || "").trim();
+    const tokenPayload = getTokenPayload(req);
+    const isAdmin =
+      String(tokenPayload?.role || "")
+        .trim()
+        .toLowerCase() === "admin";
+
+    if (
+      !Number.isInteger(numericRating) ||
+      numericRating < 1 ||
+      numericRating > 5
+    ) {
+      return res
+        .status(400)
+        .json({ message: "rating must be an integer from 1 to 5" });
+    }
+
+    await ensureProductReviewsTable();
+
+    const pool = await getPool();
+    const currentReviewResult = await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .query(
+        `SELECT TOP 1 Id, UserId
+         FROM dbo.ProductReviews
+         WHERE Id = @reviewId`,
+      );
+
+    if (currentReviewResult.recordset.length === 0) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    const reviewOwnerId = String(currentReviewResult.recordset[0].UserId || "");
+    if (!isAdmin && (!normalizedUserId || normalizedUserId !== reviewOwnerId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .input("rating", sql.Int, numericRating)
+      .input("comment", sql.NVarChar(1000), normalizedComment)
+      .query(
+        `UPDATE dbo.ProductReviews
+         SET Rating = @rating,
+             Comment = @comment,
+             UpdatedAt = SYSUTCDATETIME()
+         WHERE Id = @reviewId`,
+      );
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete("/api/reviews/:reviewId", async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const userIdFromQuery = String(req.query.userId || "").trim();
+    const userIdFromBody = String(req.body?.userId || "").trim();
+    const normalizedUserId = userIdFromBody || userIdFromQuery;
+    const tokenPayload = getTokenPayload(req);
+    const isAdmin =
+      String(tokenPayload?.role || "")
+        .trim()
+        .toLowerCase() === "admin";
+
+    await ensureProductReviewsTable();
+    await ensureReviewHelpfulVotesTable();
+
+    const pool = await getPool();
+    const currentReviewResult = await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .query(
+        `SELECT TOP 1 Id, UserId
+         FROM dbo.ProductReviews
+         WHERE Id = @reviewId`,
+      );
+
+    if (currentReviewResult.recordset.length === 0) {
+      return res.status(404).json({ message: "Review not found" });
+    }
+
+    const reviewOwnerId = String(currentReviewResult.recordset[0].UserId || "");
+    if (!isAdmin && (!normalizedUserId || normalizedUserId !== reviewOwnerId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .query(`DELETE FROM dbo.ReviewHelpfulVotes WHERE ReviewId = @reviewId`);
+
+    await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .query(`DELETE FROM dbo.ProductReviews WHERE Id = @reviewId`);
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/api/reviews/:reviewId/helpful", async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const userId = String(req.body?.userId || "").trim();
+    if (!userId) {
+      return res.status(400).json({ message: "userId is required" });
+    }
+
+    await ensureProductReviewsTable();
+    await ensureReviewHelpfulVotesTable();
+
+    const pool = await getPool();
+    const exists = await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .input("userId", sql.UniqueIdentifier, userId)
+      .query(
+        `SELECT TOP 1 Id
+         FROM dbo.ReviewHelpfulVotes
+         WHERE ReviewId = @reviewId
+           AND UserId = @userId`,
+      );
+
+    if (exists.recordset.length > 0) {
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, exists.recordset[0].Id)
+        .query(`DELETE FROM dbo.ReviewHelpfulVotes WHERE Id = @id`);
+    } else {
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, createGuid())
+        .input("reviewId", sql.UniqueIdentifier, reviewId)
+        .input("userId", sql.UniqueIdentifier, userId)
+        .query(
+          `INSERT INTO dbo.ReviewHelpfulVotes(Id, ReviewId, UserId)
+           VALUES(@id, @reviewId, @userId)`,
+        );
+    }
+
+    const countResult = await pool
+      .request()
+      .input("reviewId", sql.UniqueIdentifier, reviewId)
+      .query(
+        `SELECT COUNT(*) AS HelpfulCount
+         FROM dbo.ReviewHelpfulVotes
+         WHERE ReviewId = @reviewId`,
+      );
+
+    res.json({
+      ok: true,
+      helpfulCount: Number(countResult.recordset[0]?.HelpfulCount || 0),
+      isHelpful: exists.recordset.length === 0,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/api/reviews/helpful", async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
+    await ensureProductReviewsTable();
+    await ensureReviewHelpfulVotesTable();
+
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .input("limit", sql.Int, limit)
+      .query(
+        `SELECT TOP (@limit)
+                pr.Id, pr.ProductId, pr.UserId, pr.Rating, pr.Comment, pr.CreatedAt,
+                u.FullName AS UserName,
+                p.Name AS ProductName,
+                COUNT(hv.Id) AS HelpfulCount
+         FROM dbo.ProductReviews pr
+         INNER JOIN dbo.Users u ON u.Id = pr.UserId
+         INNER JOIN dbo.Products p ON p.Id = pr.ProductId
+         LEFT JOIN dbo.ReviewHelpfulVotes hv ON hv.ReviewId = pr.Id
+         GROUP BY pr.Id, pr.ProductId, pr.UserId, pr.Rating, pr.Comment, pr.CreatedAt, u.FullName, p.Name
+         ORDER BY COUNT(hv.Id) DESC, pr.CreatedAt DESC`,
+      );
+
+    res.json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/api/notifications", requireAuth, async (req, res) => {
+  try {
+    await ensureNotificationsTable();
+    const userId = String(req.user?.sub || "").trim();
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .input("userId", sql.UniqueIdentifier, userId)
+      .query(
+        `SELECT Id, UserId, [Type], Title, [Message], RefId, IsRead, CreatedAt, ReadAt
+         FROM dbo.UserNotifications
+         WHERE UserId = @userId
+         ORDER BY CreatedAt DESC`,
+      );
+
+    res.json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
+  try {
+    await ensureNotificationsTable();
+    const { id } = req.params;
+    const userId = String(req.user?.sub || "").trim();
+    const pool = await getPool();
+    await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .input("userId", sql.UniqueIdentifier, userId)
+      .query(
+        `UPDATE dbo.UserNotifications
+         SET IsRead = 1,
+             ReadAt = SYSUTCDATETIME()
+         WHERE Id = @id
+           AND UserId = @userId`,
+      );
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/api/notifications/read-all", requireAuth, async (req, res) => {
+  try {
+    await ensureNotificationsTable();
+    const userId = String(req.user?.sub || "").trim();
+    const pool = await getPool();
+    await pool
+      .request()
+      .input("userId", sql.UniqueIdentifier, userId)
+      .query(
+        `UPDATE dbo.UserNotifications
+         SET IsRead = 1,
+             ReadAt = SYSUTCDATETIME()
+         WHERE UserId = @userId
+           AND IsRead = 0`,
+      );
+
+    res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

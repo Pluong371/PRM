@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:frontend/core/constants/app_colors.dart';
 import 'package:frontend/common/providers/product_provider.dart';
+import 'package:frontend/common/providers/auth_provider.dart';
+import 'package:frontend/common/widgets/review_section.dart';
 import 'package:intl/intl.dart';
 
 class ProductDetailPage extends StatefulWidget {
@@ -37,6 +39,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   @override
   Widget build(BuildContext context) {
     final formatter = NumberFormat('#,###', 'vi_VN');
+    final authProvider = context.read<AuthProvider>();
 
     return Scaffold(
       appBar: AppBar(
@@ -326,6 +329,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           }).toList(),
                         ),
                       ],
+
+                      const SizedBox(height: 24),
+
+                      ReviewSection(
+                        productId: product.id,
+                        currentUserId: authProvider.user?.id,
+                        currentUserRole: authProvider.user?.role,
+                      ),
                     ],
                   ),
                 ),

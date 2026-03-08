@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:frontend/core/constants/app_colors.dart';
 import 'package:frontend/core/utils/currency_formatter.dart';
 import 'package:frontend/core/widgets/loading_widget.dart';
 import 'package:frontend/core/widgets/error_widget.dart';
 import 'package:frontend/injection_container.dart';
+import 'package:frontend/common/providers/auth_provider.dart';
+import 'package:frontend/common/widgets/review_section.dart';
 import 'package:frontend/features/product/presentation/bloc/product_bloc.dart';
 import 'package:frontend/features/product/data/models/product_model.dart';
 
@@ -255,7 +258,14 @@ class _ProductDetailBody extends StatelessWidget {
                       height: 1.6,
                     ),
                   ),
+                  const SizedBox(height: 24),
                 ],
+
+                ReviewSection(
+                  productId: product.id.toString(),
+                  currentUserId: context.read<AuthProvider>().user?.id,
+                  currentUserRole: context.read<AuthProvider>().user?.role,
+                ),
               ],
             ),
           ),

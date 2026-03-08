@@ -58,6 +58,10 @@ class _HomePageViewState extends State<_HomePageView> {
         title: const Text('ShopWeb'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => context.push('/notifications'),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
               context.read<AuthBloc>().add(const LogoutEvent());

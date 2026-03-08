@@ -10,6 +10,7 @@ import 'package:frontend/features/auth/presentation/pages/otp_verification_page.
 import 'package:frontend/features/product/presentation/pages/home_page.dart';
 import 'package:frontend/features/product/presentation/pages/product_detail_page.dart';
 import 'package:frontend/features/admin/presentation/pages/admin_dashboard_page.dart';
+import 'package:frontend/common/screens/notifications_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/login',
@@ -49,6 +50,10 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(path: '/admin', builder: (context, state) => const AdminDashboardPage()),
+    GoRoute(
+      path: '/notifications',
+      builder: (context, state) => const NotificationsPage(),
+    ),
     GoRoute(
       path: '/product/:id',
       builder: (context, state) {
