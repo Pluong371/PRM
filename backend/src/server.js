@@ -1,18 +1,18 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
-const { sql, getPool } = require('./db');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
+const { sql, getPool } = require("./db");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = Number(process.env.PORT || 3000);
-const JWT_SECRET = process.env.JWT_SECRET || 'clothing-store-dev-secret';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const JWT_SECRET = process.env.JWT_SECRET || "clothing-store-dev-secret";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
 function issueToken(user) {
   return jwt.sign(
@@ -22,13 +22,13 @@ function issueToken(user) {
       email: user.Email,
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn: JWT_EXPIRES_IN },
   );
 }
 
 function getBearerToken(req) {
-  const authHeader = String(req.headers.authorization || '');
-  if (!authHeader.toLowerCase().startsWith('bearer ')) return null;
+  const authHeader = String(req.headers.authorization || "");
+  if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
   return authHeader.slice(7).trim();
 }
 
@@ -40,6 +40,30 @@ function getTokenPayload(req) {
   } catch (_error) {
     return null;
   }
+}
+
+function requireAuth(req, res, next) {
+  const payload = getTokenPayload(req);
+  if (!payload) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  req.user = payload;
+  return next();
+}
+
+function requireAdmin(req, res, next) {
+  const payload = req.user || getTokenPayload(req);
+  const role = String(payload?.role || "")
+    .trim()
+    .toLowerCase();
+  if (!payload) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  if (role !== "admin") {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  req.user = payload;
+  return next();
 }
 
 async function ensureProductReviewsTable() {
@@ -60,29 +84,27 @@ async function ensureProductReviewsTable() {
          CONSTRAINT CK_ProductReviews_Rating CHECK (Rating BETWEEN 1 AND 5),
          CONSTRAINT UQ_ProductReviews_Product_User UNIQUE (ProductId, UserId)
        );
-     END`
+     END`,
   );
 }
 
 function createGuid() {
-  if (typeof crypto.randomUUID === 'function') {
+  if (typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   const bytes = crypto.randomBytes(16);
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString('hex');
+  const hex = bytes.toString("hex");
   return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}`;
 }
 
 function normalizeImageUrls(body) {
-  const fromArray = Array.isArray(body.imageUrls)
-    ? body.imageUrls
-    : [];
+  const fromArray = Array.isArray(body.imageUrls) ? body.imageUrls : [];
   const fromSingle = body.imageUrl ? [body.imageUrl] : [];
 
   const normalized = [...fromArray, ...fromSingle]
-    .map((value) => String(value || '').trim())
+    .map((value) => String(value || "").trim())
     .filter((value) => value.length > 0);
 
   return [...new Set(normalized)];
@@ -90,11 +112,13 @@ function normalizeImageUrls(body) {
 
 function normalizeSizeStocks(body) {
   const raw = body?.sizeStocks;
-  if (!raw || typeof raw !== 'object') return {};
+  if (!raw || typeof raw !== "object") return {};
 
   const result = {};
   for (const [sizeRaw, stockRaw] of Object.entries(raw)) {
-    const size = String(sizeRaw || '').trim().toUpperCase();
+    const size = String(sizeRaw || "")
+      .trim()
+      .toUpperCase();
     if (!size) continue;
     const stock = Number(stockRaw || 0);
     result[size] = Number.isFinite(stock) ? Math.max(0, Math.trunc(stock)) : 0;
@@ -104,21 +128,23 @@ function normalizeSizeStocks(body) {
 
 function normalizeColorImages(body) {
   const raw = body?.colorImages;
-  if (!raw || typeof raw !== 'object') return {};
+  if (!raw || typeof raw !== "object") return {};
 
   const result = {};
   for (const [hexRaw, imagesRaw] of Object.entries(raw)) {
-    const hex = String(hexRaw || '').trim().toUpperCase();
+    const hex = String(hexRaw || "")
+      .trim()
+      .toUpperCase();
     if (!hex) continue;
-    const normalizedHex = hex.startsWith('#') ? hex : `#${hex}`;
-    const images = Array.isArray(imagesRaw)
-      ? imagesRaw
-      : [imagesRaw];
-    result[normalizedHex] = [...new Set(
-      images
-        .map((value) => String(value || '').trim())
-        .filter((value) => value.length > 0)
-    )];
+    const normalizedHex = hex.startsWith("#") ? hex : `#${hex}`;
+    const images = Array.isArray(imagesRaw) ? imagesRaw : [imagesRaw];
+    result[normalizedHex] = [
+      ...new Set(
+        images
+          .map((value) => String(value || "").trim())
+          .filter((value) => value.length > 0),
+      ),
+    ];
   }
   return result;
 }
@@ -130,7 +156,7 @@ async function ensureProductImagesColorColumn() {
      BEGIN
        ALTER TABLE dbo.ProductImages
        ADD ColorHex NVARCHAR(10) NULL;
-     END`
+     END`,
   );
 }
 
@@ -141,48 +167,69 @@ async function ensureProductOwnerColumn() {
      BEGIN
        ALTER TABLE dbo.Products
        ADD OwnerId UNIQUEIDENTIFIER NULL;
-     END`
+     END`,
   );
 }
 
-app.get('/api/health', async (_req, res) => {
+async function ensureCategoriesTable() {
+  const pool = await getPool();
+  await pool.request().query(
+    `IF OBJECT_ID('dbo.Categories', 'U') IS NULL
+     BEGIN
+       CREATE TABLE dbo.Categories (
+         Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_Categories PRIMARY KEY,
+         Name NVARCHAR(120) NOT NULL,
+         [Description] NVARCHAR(500) NULL,
+         ImageUrl NVARCHAR(500) NULL,
+         IsActive BIT NOT NULL CONSTRAINT DF_Categories_IsActive DEFAULT 1,
+         CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_Categories_CreatedAt DEFAULT SYSUTCDATETIME(),
+         UpdatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_Categories_UpdatedAt DEFAULT SYSUTCDATETIME(),
+         CONSTRAINT UQ_Categories_Name UNIQUE (Name)
+       );
+     END`,
+  );
+}
+
+app.get("/api/health", async (_req, res) => {
   try {
     const pool = await getPool();
-    await pool.request().query('SELECT 1 AS ok');
+    await pool.request().query("SELECT 1 AS ok");
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ ok: false, message: error.message });
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required" });
     }
 
     const pool = await getPool();
 
     const result = await pool
       .request()
-      .input('email', sql.NVarChar(150), email)
+      .input("email", sql.NVarChar(150), email)
       .query(
         `SELECT TOP 1 Id, FullName, Email, Phone, PasswordHash, Role, IsActive
          FROM dbo.Users
-         WHERE Email = @email AND IsActive = 1`
+         WHERE Email = @email AND IsActive = 1`,
       );
 
     if (result.recordset.length === 0) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const user = result.recordset[0];
     const passwordMatch = bcrypt.compareSync(password, user.PasswordHash);
 
     if (!passwordMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const token = issueToken(user);
@@ -194,14 +241,14 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   try {
     const { fullName, email, phone, password } = req.body;
 
     if (!fullName || !email || !password) {
       return res
         .status(400)
-        .json({ message: 'Full name, email and password are required' });
+        .json({ message: "Full name, email and password are required" });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -209,25 +256,25 @@ app.post('/api/auth/register', async (req, res) => {
 
     const existed = await pool
       .request()
-      .input('email', sql.NVarChar(150), normalizedEmail)
+      .input("email", sql.NVarChar(150), normalizedEmail)
       .query(`SELECT TOP 1 Id FROM dbo.Users WHERE Email = @email`);
 
     if (existed.recordset.length > 0) {
-      return res.status(409).json({ message: 'Email already exists' });
+      return res.status(409).json({ message: "Email already exists" });
     }
 
     const hashedPassword = bcrypt.hashSync(String(password), 10);
 
     const created = await pool
       .request()
-      .input('fullName', sql.NVarChar(120), String(fullName).trim())
-      .input('email', sql.NVarChar(150), normalizedEmail)
-      .input('phone', sql.NVarChar(20), phone || null)
-      .input('password', sql.NVarChar(255), hashedPassword)
+      .input("fullName", sql.NVarChar(120), String(fullName).trim())
+      .input("email", sql.NVarChar(150), normalizedEmail)
+      .input("phone", sql.NVarChar(20), phone || null)
+      .input("password", sql.NVarChar(255), hashedPassword)
       .query(
         `INSERT INTO dbo.Users(FullName, Email, Phone, PasswordHash, Role, IsActive)
          OUTPUT INSERTED.Id, INSERTED.FullName, INSERTED.Email, INSERTED.Phone, INSERTED.Role, INSERTED.IsActive
-         VALUES(@fullName, @email, @phone, @password, 'customer', 1)`
+         VALUES(@fullName, @email, @phone, @password, 'customer', 1)`,
       );
 
     const user = created.recordset[0];
@@ -239,25 +286,25 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.get('/api/auth/me', async (req, res) => {
+app.get("/api/auth/me", async (req, res) => {
   try {
     const payload = getTokenPayload(req);
     if (!payload?.sub) {
-      return res.status(401).json({ message: 'Unauthorized' });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     const pool = await getPool();
     const result = await pool
       .request()
-      .input('id', sql.UniqueIdentifier, String(payload.sub))
+      .input("id", sql.UniqueIdentifier, String(payload.sub))
       .query(
         `SELECT TOP 1 Id, FullName, Email, Phone, Role, IsActive
          FROM dbo.Users
-         WHERE Id = @id AND IsActive = 1`
+         WHERE Id = @id AND IsActive = 1`,
       );
 
     if (result.recordset.length === 0) {
-      return res.status(401).json({ message: 'Unauthorized' });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     res.json(result.recordset[0]);
@@ -266,17 +313,17 @@ app.get('/api/auth/me', async (req, res) => {
   }
 });
 
-app.get('/api/products', async (req, res) => {
+app.get("/api/products", async (req, res) => {
   try {
     await ensureProductImagesColorColumn();
     await ensureProductOwnerColumn();
     const payload = getTokenPayload(req);
-    const isOwner = payload?.role === 'owner';
-    const ownerId = isOwner ? String(payload.sub || '') : null;
+    const isOwner = payload?.role === "owner";
+    const ownerId = isOwner ? String(payload.sub || "") : null;
     const pool = await getPool();
     const productsRequest = pool.request();
     if (isOwner) {
-      productsRequest.input('ownerId', sql.UniqueIdentifier, ownerId);
+      productsRequest.input("ownerId", sql.UniqueIdentifier, ownerId);
     }
     const productsResult = await productsRequest.query(
       `SELECT p.Id, p.OwnerId, p.Name, p.Category, p.[Description], p.Price, p.DiscountPercent, p.Stock,
@@ -290,8 +337,8 @@ app.get('/api/products', async (req, res) => {
          GROUP BY oi.ProductId
        ) s ON s.ProductId = p.Id
        WHERE p.IsActive = 1
-         ${isOwner ? 'AND p.OwnerId = @ownerId' : ''}
-       ORDER BY CreatedAt DESC`
+         ${isOwner ? "AND p.OwnerId = @ownerId" : ""}
+       ORDER BY CreatedAt DESC`,
     );
 
     const imagesResult = await pool.request().query(
@@ -299,7 +346,7 @@ app.get('/api/products', async (req, res) => {
        FROM dbo.ProductImages pi
        INNER JOIN dbo.Products p ON p.Id = pi.ProductId
        WHERE p.IsActive = 1
-       ORDER BY pi.ProductId ASC, pi.SortOrder ASC, pi.Id ASC`
+       ORDER BY pi.ProductId ASC, pi.SortOrder ASC, pi.Id ASC`,
     );
 
     const variantsResult = await pool.request().query(
@@ -307,7 +354,7 @@ app.get('/api/products', async (req, res) => {
        FROM dbo.ProductVariants pv
        INNER JOIN dbo.Products p ON p.Id = pv.ProductId
        WHERE p.IsActive = 1
-       ORDER BY pv.ProductId ASC, pv.SizeLabel ASC`
+       ORDER BY pv.ProductId ASC, pv.SizeLabel ASC`,
     );
 
     const imagesByProduct = new Map();
@@ -319,7 +366,9 @@ app.get('/api/products', async (req, res) => {
       }
       imagesByProduct.get(key).push(row.ImageUrl);
 
-      const colorHex = String(row.ColorHex || '').trim().toUpperCase();
+      const colorHex = String(row.ColorHex || "")
+        .trim()
+        .toUpperCase();
       if (colorHex) {
         if (!colorImagesByProduct.has(key)) {
           colorImagesByProduct.set(key, {});
@@ -336,7 +385,9 @@ app.get('/api/products', async (req, res) => {
       if (!sizeStocksByProduct.has(key)) {
         sizeStocksByProduct.set(key, {});
       }
-      const size = String(row.SizeLabel || '').trim().toUpperCase();
+      const size = String(row.SizeLabel || "")
+        .trim()
+        .toUpperCase();
       const stock = Number(row.Stock || 0);
       if (size) {
         sizeStocksByProduct.get(key)[size] =
@@ -362,7 +413,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-app.post('/api/products', async (req, res) => {
+app.post("/api/products", async (req, res) => {
   try {
     await ensureProductImagesColorColumn();
     await ensureProductOwnerColumn();
@@ -383,7 +434,11 @@ app.post('/api/products', async (req, res) => {
 
     if (Object.keys(sizeStocks).length === 0 && Array.isArray(req.body.sizes)) {
       const sizes = req.body.sizes
-        .map((value) => String(value || '').trim().toUpperCase())
+        .map((value) =>
+          String(value || "")
+            .trim()
+            .toUpperCase(),
+        )
         .filter((value) => value.length > 0);
       if (sizes.length > 0) {
         const base = Math.floor(Number(stock || 0) / sizes.length);
@@ -396,35 +451,33 @@ app.post('/api/products', async (req, res) => {
     }
 
     if (Object.keys(colorImages).length === 0 && imageUrls.length > 0) {
-      colorImages = { '#000000': imageUrls };
+      colorImages = { "#000000": imageUrls };
     }
 
     const stockFromSizes = Object.values(sizeStocks).reduce(
       (sum, value) => sum + Number(value || 0),
-      0
+      0,
     );
-    const finalStock = Object.keys(sizeStocks).length > 0
-      ? stockFromSizes
-      : Number(stock || 0);
-    const finalOwnerId = payload?.role === 'owner'
-      ? String(payload.sub || '')
-      : (ownerId || null);
+    const finalStock =
+      Object.keys(sizeStocks).length > 0 ? stockFromSizes : Number(stock || 0);
+    const finalOwnerId =
+      payload?.role === "owner" ? String(payload.sub || "") : ownerId || null;
 
     const pool = await getPool();
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
-      .input('ownerId', sql.UniqueIdentifier, finalOwnerId || null)
-      .input('name', sql.NVarChar(200), name)
-      .input('category', sql.NVarChar(80), category)
-      .input('description', sql.NVarChar(sql.MAX), description || '')
-      .input('price', sql.Decimal(18, 2), Number(price || 0))
-      .input('discountPercent', sql.Decimal(5, 2), Number(discountPercent || 0))
-      .input('stock', sql.Int, finalStock)
+      .input("id", sql.UniqueIdentifier, id)
+      .input("ownerId", sql.UniqueIdentifier, finalOwnerId || null)
+      .input("name", sql.NVarChar(200), name)
+      .input("category", sql.NVarChar(80), category)
+      .input("description", sql.NVarChar(sql.MAX), description || "")
+      .input("price", sql.Decimal(18, 2), Number(price || 0))
+      .input("discountPercent", sql.Decimal(5, 2), Number(discountPercent || 0))
+      .input("stock", sql.Int, finalStock)
       .query(
         `INSERT INTO dbo.Products(Id, OwnerId, Name, Category, [Description], Price, DiscountPercent, Stock, IsActive)
-        VALUES(@id, @ownerId, @name, @category, @description, @price, @discountPercent, @stock, 1)`
+        VALUES(@id, @ownerId, @name, @category, @description, @price, @discountPercent, @stock, 1)`,
       );
 
     const insertedImages = new Set();
@@ -436,13 +489,13 @@ app.post('/api/products', async (req, res) => {
         insertedImages.add(key);
         await pool
           .request()
-          .input('productId', sql.UniqueIdentifier, id)
-          .input('imageUrl', sql.NVarChar(500), imageUrl)
-          .input('colorHex', sql.NVarChar(10), colorHex)
-          .input('sortOrder', sql.Int, sortOrder)
+          .input("productId", sql.UniqueIdentifier, id)
+          .input("imageUrl", sql.NVarChar(500), imageUrl)
+          .input("colorHex", sql.NVarChar(10), colorHex)
+          .input("sortOrder", sql.Int, sortOrder)
           .query(
             `INSERT INTO dbo.ProductImages(ProductId, ImageUrl, ColorHex, SortOrder)
-             VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`
+             VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`,
           );
         sortOrder += 1;
       }
@@ -454,29 +507,29 @@ app.post('/api/products', async (req, res) => {
       insertedImages.add(key);
       await pool
         .request()
-        .input('productId', sql.UniqueIdentifier, id)
-        .input('imageUrl', sql.NVarChar(500), imageUrl)
-        .input('colorHex', sql.NVarChar(10), null)
-        .input('sortOrder', sql.Int, sortOrder)
+        .input("productId", sql.UniqueIdentifier, id)
+        .input("imageUrl", sql.NVarChar(500), imageUrl)
+        .input("colorHex", sql.NVarChar(10), null)
+        .input("sortOrder", sql.Int, sortOrder)
         .query(
           `INSERT INTO dbo.ProductImages(ProductId, ImageUrl, ColorHex, SortOrder)
-           VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`
+           VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`,
         );
       sortOrder += 1;
     }
 
-    const variantColor = Object.keys(colorImages)[0] || '#000000';
+    const variantColor = Object.keys(colorImages)[0] || "#000000";
     for (const [size, stockValue] of Object.entries(sizeStocks)) {
       await pool
         .request()
-        .input('id', sql.UniqueIdentifier, createGuid())
-        .input('productId', sql.UniqueIdentifier, id)
-        .input('sizeLabel', sql.NVarChar(10), size)
-        .input('colorHex', sql.NVarChar(10), variantColor)
-        .input('stock', sql.Int, Number(stockValue || 0))
+        .input("id", sql.UniqueIdentifier, createGuid())
+        .input("productId", sql.UniqueIdentifier, id)
+        .input("sizeLabel", sql.NVarChar(10), size)
+        .input("colorHex", sql.NVarChar(10), variantColor)
+        .input("stock", sql.Int, Number(stockValue || 0))
         .query(
           `INSERT INTO dbo.ProductVariants(Id, ProductId, SizeLabel, ColorHex, Stock)
-           VALUES(@id, @productId, @sizeLabel, @colorHex, @stock)`
+           VALUES(@id, @productId, @sizeLabel, @colorHex, @stock)`,
         );
     }
 
@@ -486,13 +539,102 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
-app.put('/api/products/:id', async (req, res) => {
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await ensureProductImagesColorColumn();
+    await ensureProductOwnerColumn();
+    const pool = await getPool();
+
+    const productResult = await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .query(
+        `SELECT p.Id, p.OwnerId, p.Name, p.Category, p.[Description], p.Price, p.DiscountPercent, p.Stock,
+                COALESCE(s.SoldCount, 0) AS SoldCount
+         FROM dbo.Products p
+         LEFT JOIN (
+           SELECT oi.ProductId, SUM(oi.Quantity) AS SoldCount
+           FROM dbo.OrderItems oi
+           INNER JOIN dbo.Orders o ON o.Id = oi.OrderId
+           WHERE LOWER(o.[Status]) <> 'cancelled'
+           GROUP BY oi.ProductId
+         ) s ON s.ProductId = p.Id
+         WHERE p.Id = @id AND p.IsActive = 1`,
+      );
+
+    if (productResult.recordset.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const product = productResult.recordset[0];
+    const productKey = String(product.Id).toLowerCase();
+
+    const imagesResult = await pool
+      .request()
+      .input("productId", sql.UniqueIdentifier, id)
+      .query(
+        `SELECT pi.ProductId, pi.ImageUrl, pi.ColorHex, pi.SortOrder, pi.Id
+         FROM dbo.ProductImages pi
+         WHERE pi.ProductId = @productId
+         ORDER BY pi.SortOrder ASC, pi.Id ASC`,
+      );
+
+    const variantsResult = await pool
+      .request()
+      .input("productId", sql.UniqueIdentifier, id)
+      .query(
+        `SELECT pv.ProductId, pv.SizeLabel, pv.Stock, pv.ColorHex
+         FROM dbo.ProductVariants pv
+         WHERE pv.ProductId = @productId
+         ORDER BY pv.SizeLabel ASC`,
+      );
+
+    const imageUrls = imagesResult.recordset.map((row) => row.ImageUrl);
+    const colorImagesByProduct = {};
+    for (const row of imagesResult.recordset) {
+      const colorHex = String(row.ColorHex || "")
+        .trim()
+        .toUpperCase();
+      if (colorHex) {
+        if (!colorImagesByProduct[colorHex])
+          colorImagesByProduct[colorHex] = [];
+        colorImagesByProduct[colorHex].push(row.ImageUrl);
+      }
+    }
+
+    const sizeStocksByProduct = {};
+    for (const row of variantsResult.recordset) {
+      const size = String(row.SizeLabel || "")
+        .trim()
+        .toUpperCase();
+      const stock = Number(row.Stock || 0);
+      if (size) {
+        sizeStocksByProduct[size] = (sizeStocksByProduct[size] || 0) + stock;
+      }
+    }
+
+    const response = {
+      ...product,
+      ImageUrls: imageUrls,
+      ImageUrl: imageUrls[0] || null,
+      SizeStocks: sizeStocksByProduct,
+      ColorImages: colorImagesByProduct,
+    };
+
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put("/api/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
     await ensureProductImagesColorColumn();
     await ensureProductOwnerColumn();
     const payload = getTokenPayload(req);
-    const isOwner = payload?.role === 'owner';
+    const isOwner = payload?.role === "owner";
     const {
       ownerId,
       name,
@@ -508,7 +650,11 @@ app.put('/api/products/:id', async (req, res) => {
 
     if (Object.keys(sizeStocks).length === 0 && Array.isArray(req.body.sizes)) {
       const sizes = req.body.sizes
-        .map((value) => String(value || '').trim().toUpperCase())
+        .map((value) =>
+          String(value || "")
+            .trim()
+            .toUpperCase(),
+        )
         .filter((value) => value.length > 0);
       if (sizes.length > 0) {
         const base = Math.floor(Number(stock || 0) / sizes.length);
@@ -521,66 +667,63 @@ app.put('/api/products/:id', async (req, res) => {
     }
 
     if (Object.keys(colorImages).length === 0 && imageUrls.length > 0) {
-      colorImages = { '#000000': imageUrls };
+      colorImages = { "#000000": imageUrls };
     }
 
     const stockFromSizes = Object.values(sizeStocks).reduce(
       (sum, value) => sum + Number(value || 0),
-      0
+      0,
     );
-    const finalStock = Object.keys(sizeStocks).length > 0
-      ? stockFromSizes
-      : Number(stock || 0);
+    const finalStock =
+      Object.keys(sizeStocks).length > 0 ? stockFromSizes : Number(stock || 0);
 
     const pool = await getPool();
 
     if (isOwner) {
       const owned = await pool
         .request()
-        .input('id', sql.UniqueIdentifier, id)
-        .input('ownerId', sql.UniqueIdentifier, String(payload.sub || ''))
+        .input("id", sql.UniqueIdentifier, id)
+        .input("ownerId", sql.UniqueIdentifier, String(payload.sub || ""))
         .query(
           `SELECT TOP 1 Id
            FROM dbo.Products
-           WHERE Id = @id AND OwnerId = @ownerId AND IsActive = 1`
+           WHERE Id = @id AND OwnerId = @ownerId AND IsActive = 1`,
         );
 
       if (owned.recordset.length === 0) {
-        return res.status(403).json({ message: 'Forbidden' });
+        return res.status(403).json({ message: "Forbidden" });
       }
     }
 
-    const finalOwnerId = isOwner
-      ? String(payload.sub || '')
-      : (ownerId || null);
+    const finalOwnerId = isOwner ? String(payload.sub || "") : ownerId || null;
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
-      .input('ownerId', sql.UniqueIdentifier, finalOwnerId)
-      .input('name', sql.NVarChar(200), name)
-      .input('category', sql.NVarChar(80), category)
-      .input('description', sql.NVarChar(sql.MAX), description || '')
-      .input('price', sql.Decimal(18, 2), Number(price || 0))
-      .input('discountPercent', sql.Decimal(5, 2), Number(discountPercent || 0))
-      .input('stock', sql.Int, finalStock)
+      .input("id", sql.UniqueIdentifier, id)
+      .input("ownerId", sql.UniqueIdentifier, finalOwnerId)
+      .input("name", sql.NVarChar(200), name)
+      .input("category", sql.NVarChar(80), category)
+      .input("description", sql.NVarChar(sql.MAX), description || "")
+      .input("price", sql.Decimal(18, 2), Number(price || 0))
+      .input("discountPercent", sql.Decimal(5, 2), Number(discountPercent || 0))
+      .input("stock", sql.Int, finalStock)
       .query(
         `UPDATE dbo.Products
          SET OwnerId=COALESCE(@ownerId, OwnerId),
            Name=@name, Category=@category, [Description]=@description,
              Price=@price, DiscountPercent=@discountPercent, Stock=@stock,
              UpdatedAt=SYSUTCDATETIME()
-         WHERE Id=@id`
+         WHERE Id=@id`,
       );
 
     await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
+      .input("productId", sql.UniqueIdentifier, id)
       .query(`DELETE FROM dbo.ProductImages WHERE ProductId=@productId`);
 
     await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
+      .input("productId", sql.UniqueIdentifier, id)
       .query(`DELETE FROM dbo.ProductVariants WHERE ProductId=@productId`);
 
     const insertedImages = new Set();
@@ -592,13 +735,13 @@ app.put('/api/products/:id', async (req, res) => {
         insertedImages.add(key);
         await pool
           .request()
-          .input('productId', sql.UniqueIdentifier, id)
-          .input('imageUrl', sql.NVarChar(500), imageUrl)
-          .input('colorHex', sql.NVarChar(10), colorHex)
-          .input('sortOrder', sql.Int, sortOrder)
+          .input("productId", sql.UniqueIdentifier, id)
+          .input("imageUrl", sql.NVarChar(500), imageUrl)
+          .input("colorHex", sql.NVarChar(10), colorHex)
+          .input("sortOrder", sql.Int, sortOrder)
           .query(
             `INSERT INTO dbo.ProductImages(ProductId, ImageUrl, ColorHex, SortOrder)
-             VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`
+             VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`,
           );
         sortOrder += 1;
       }
@@ -610,29 +753,29 @@ app.put('/api/products/:id', async (req, res) => {
       insertedImages.add(key);
       await pool
         .request()
-        .input('productId', sql.UniqueIdentifier, id)
-        .input('imageUrl', sql.NVarChar(500), imageUrl)
-        .input('colorHex', sql.NVarChar(10), null)
-        .input('sortOrder', sql.Int, sortOrder)
+        .input("productId", sql.UniqueIdentifier, id)
+        .input("imageUrl", sql.NVarChar(500), imageUrl)
+        .input("colorHex", sql.NVarChar(10), null)
+        .input("sortOrder", sql.Int, sortOrder)
         .query(
           `INSERT INTO dbo.ProductImages(ProductId, ImageUrl, ColorHex, SortOrder)
-           VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`
+           VALUES(@productId, @imageUrl, @colorHex, @sortOrder)`,
         );
       sortOrder += 1;
     }
 
-    const variantColor = Object.keys(colorImages)[0] || '#000000';
+    const variantColor = Object.keys(colorImages)[0] || "#000000";
     for (const [size, stockValue] of Object.entries(sizeStocks)) {
       await pool
         .request()
-        .input('id', sql.UniqueIdentifier, createGuid())
-        .input('productId', sql.UniqueIdentifier, id)
-        .input('sizeLabel', sql.NVarChar(10), size)
-        .input('colorHex', sql.NVarChar(10), variantColor)
-        .input('stock', sql.Int, Number(stockValue || 0))
+        .input("id", sql.UniqueIdentifier, createGuid())
+        .input("productId", sql.UniqueIdentifier, id)
+        .input("sizeLabel", sql.NVarChar(10), size)
+        .input("colorHex", sql.NVarChar(10), variantColor)
+        .input("stock", sql.Int, Number(stockValue || 0))
         .query(
           `INSERT INTO dbo.ProductVariants(Id, ProductId, SizeLabel, ColorHex, Stock)
-           VALUES(@id, @productId, @sizeLabel, @colorHex, @stock)`
+           VALUES(@id, @productId, @sizeLabel, @colorHex, @stock)`,
         );
     }
 
@@ -642,34 +785,34 @@ app.put('/api/products/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/products/:id', async (req, res) => {
+app.delete("/api/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const payload = getTokenPayload(req);
-    const isOwner = payload?.role === 'owner';
+    const isOwner = payload?.role === "owner";
     const pool = await getPool();
 
     if (isOwner) {
       const owned = await pool
         .request()
-        .input('id', sql.UniqueIdentifier, id)
-        .input('ownerId', sql.UniqueIdentifier, String(payload.sub || ''))
+        .input("id", sql.UniqueIdentifier, id)
+        .input("ownerId", sql.UniqueIdentifier, String(payload.sub || ""))
         .query(
           `SELECT TOP 1 Id
            FROM dbo.Products
-           WHERE Id = @id AND OwnerId = @ownerId AND IsActive = 1`
+           WHERE Id = @id AND OwnerId = @ownerId AND IsActive = 1`,
         );
 
       if (owned.recordset.length === 0) {
-        return res.status(403).json({ message: 'Forbidden' });
+        return res.status(403).json({ message: "Forbidden" });
       }
     }
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
+      .input("id", sql.UniqueIdentifier, id)
       .query(
-        `UPDATE dbo.Products SET IsActive = 0, UpdatedAt=SYSUTCDATETIME() WHERE Id=@id`
+        `UPDATE dbo.Products SET IsActive = 0, UpdatedAt=SYSUTCDATETIME() WHERE Id=@id`,
       );
 
     res.json({ ok: true });
@@ -678,7 +821,135 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 
-app.get('/api/products/:id/reviews', async (req, res) => {
+app.get("/api/categories", async (_req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const pool = await getPool();
+    const result = await pool.request().query(
+      `SELECT Id, Name, [Description], ImageUrl, IsActive, CreatedAt, UpdatedAt
+       FROM dbo.Categories
+       WHERE IsActive = 1
+       ORDER BY Name ASC`,
+    );
+
+    res.json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/api/categories", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const { name, description, imageUrl } = req.body;
+    const normalizedName = String(name || "").trim();
+
+    if (!normalizedName) {
+      return res.status(400).json({ message: "Category name is required" });
+    }
+
+    const pool = await getPool();
+    await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, createGuid())
+      .input("name", sql.NVarChar(120), normalizedName)
+      .input(
+        "description",
+        sql.NVarChar(500),
+        description ? String(description).trim() : null,
+      )
+      .input(
+        "imageUrl",
+        sql.NVarChar(500),
+        imageUrl ? String(imageUrl).trim() : null,
+      )
+      .query(
+        `INSERT INTO dbo.Categories(Id, Name, [Description], ImageUrl, IsActive)
+         VALUES(@id, @name, @description, @imageUrl, 1)`,
+      );
+
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    if (String(error.message || "").includes("UQ_Categories_Name")) {
+      return res.status(409).json({ message: "Category name already exists" });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put("/api/categories/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const { id } = req.params;
+    const { name, description, imageUrl, isActive } = req.body;
+    const normalizedName = String(name || "").trim();
+
+    if (!normalizedName) {
+      return res.status(400).json({ message: "Category name is required" });
+    }
+
+    const pool = await getPool();
+    await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .input("name", sql.NVarChar(120), normalizedName)
+      .input(
+        "description",
+        sql.NVarChar(500),
+        description ? String(description).trim() : null,
+      )
+      .input(
+        "imageUrl",
+        sql.NVarChar(500),
+        imageUrl ? String(imageUrl).trim() : null,
+      )
+      .input("isActive", sql.Bit, isActive === false ? 0 : 1)
+      .query(
+        `UPDATE dbo.Categories
+         SET Name = @name,
+             [Description] = @description,
+             ImageUrl = @imageUrl,
+             IsActive = @isActive,
+             UpdatedAt = SYSUTCDATETIME()
+         WHERE Id = @id`,
+      );
+
+    res.json({ ok: true });
+  } catch (error) {
+    if (String(error.message || "").includes("UQ_Categories_Name")) {
+      return res.status(409).json({ message: "Category name already exists" });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete(
+  "/api/categories/:id",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      await ensureCategoriesTable();
+      const { id } = req.params;
+      const pool = await getPool();
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, id)
+        .query(
+          `UPDATE dbo.Categories
+         SET IsActive = 0,
+             UpdatedAt = SYSUTCDATETIME()
+         WHERE Id = @id`,
+        );
+
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get("/api/products/:id/reviews", async (req, res) => {
   try {
     const { id } = req.params;
     await ensureProductReviewsTable();
@@ -686,14 +957,14 @@ app.get('/api/products/:id/reviews', async (req, res) => {
     const pool = await getPool();
     const result = await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
+      .input("productId", sql.UniqueIdentifier, id)
       .query(
         `SELECT pr.Id, pr.ProductId, pr.UserId, pr.Rating, pr.Comment, pr.CreatedAt,
                 u.FullName AS UserName
          FROM dbo.ProductReviews pr
          INNER JOIN dbo.Users u ON u.Id = pr.UserId
          WHERE pr.ProductId = @productId
-         ORDER BY pr.CreatedAt DESC`
+         ORDER BY pr.CreatedAt DESC`,
       );
 
     res.json(result.recordset);
@@ -702,12 +973,12 @@ app.get('/api/products/:id/reviews', async (req, res) => {
   }
 });
 
-app.get('/api/products/:id/can-review', async (req, res) => {
+app.get("/api/products/:id/can-review", async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = String(req.query.userId || '').trim();
+    const userId = String(req.query.userId || "").trim();
     if (!userId) {
-      return res.status(400).json({ message: 'userId is required' });
+      return res.status(400).json({ message: "userId is required" });
     }
 
     await ensureProductReviewsTable();
@@ -715,26 +986,26 @@ app.get('/api/products/:id/can-review', async (req, res) => {
     const pool = await getPool();
     const purchasedResult = await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
-      .input('userId', sql.UniqueIdentifier, userId)
+      .input("productId", sql.UniqueIdentifier, id)
+      .input("userId", sql.UniqueIdentifier, userId)
       .query(
         `SELECT TOP 1 1 AS Purchased
          FROM dbo.OrderItems oi
          INNER JOIN dbo.Orders o ON o.Id = oi.OrderId
          WHERE oi.ProductId = @productId
            AND o.UserId = @userId
-           AND LOWER(o.[Status]) <> 'cancelled'`
+           AND LOWER(o.[Status]) <> 'cancelled'`,
       );
 
     const reviewedResult = await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
-      .input('userId', sql.UniqueIdentifier, userId)
+      .input("productId", sql.UniqueIdentifier, id)
+      .input("userId", sql.UniqueIdentifier, userId)
       .query(
         `SELECT TOP 1 1 AS Reviewed
          FROM dbo.ProductReviews
          WHERE ProductId = @productId
-           AND UserId = @userId`
+           AND UserId = @userId`,
       );
 
     res.json({
@@ -746,20 +1017,26 @@ app.get('/api/products/:id/can-review', async (req, res) => {
   }
 });
 
-app.post('/api/products/:id/reviews', async (req, res) => {
+app.post("/api/products/:id/reviews", async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, rating, comment } = req.body;
 
-    const normalizedUserId = String(userId || '').trim();
-    const normalizedComment = String(comment || '').trim();
+    const normalizedUserId = String(userId || "").trim();
+    const normalizedComment = String(comment || "").trim();
     const numericRating = Number(rating || 0);
 
     if (!normalizedUserId) {
-      return res.status(400).json({ message: 'userId is required' });
+      return res.status(400).json({ message: "userId is required" });
     }
-    if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
-      return res.status(400).json({ message: 'rating must be an integer from 1 to 5' });
+    if (
+      !Number.isInteger(numericRating) ||
+      numericRating < 1 ||
+      numericRating > 5
+    ) {
+      return res
+        .status(400)
+        .json({ message: "rating must be an integer from 1 to 5" });
     }
 
     await ensureProductReviewsTable();
@@ -767,56 +1044,60 @@ app.post('/api/products/:id/reviews', async (req, res) => {
     const pool = await getPool();
     const purchasedResult = await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
-      .input('userId', sql.UniqueIdentifier, normalizedUserId)
+      .input("productId", sql.UniqueIdentifier, id)
+      .input("userId", sql.UniqueIdentifier, normalizedUserId)
       .query(
         `SELECT TOP 1 1 AS Purchased
          FROM dbo.OrderItems oi
          INNER JOIN dbo.Orders o ON o.Id = oi.OrderId
          WHERE oi.ProductId = @productId
            AND o.UserId = @userId
-           AND LOWER(o.[Status]) <> 'cancelled'`
+           AND LOWER(o.[Status]) <> 'cancelled'`,
       );
 
     if (purchasedResult.recordset.length === 0) {
-      return res.status(403).json({ message: 'Only customers who purchased can review this product' });
+      return res
+        .status(403)
+        .json({
+          message: "Only customers who purchased can review this product",
+        });
     }
 
     const existed = await pool
       .request()
-      .input('productId', sql.UniqueIdentifier, id)
-      .input('userId', sql.UniqueIdentifier, normalizedUserId)
+      .input("productId", sql.UniqueIdentifier, id)
+      .input("userId", sql.UniqueIdentifier, normalizedUserId)
       .query(
         `SELECT TOP 1 Id
          FROM dbo.ProductReviews
          WHERE ProductId = @productId
-           AND UserId = @userId`
+           AND UserId = @userId`,
       );
 
     if (existed.recordset.length > 0) {
       await pool
         .request()
-        .input('id', sql.UniqueIdentifier, existed.recordset[0].Id)
-        .input('rating', sql.Int, numericRating)
-        .input('comment', sql.NVarChar(1000), normalizedComment)
+        .input("id", sql.UniqueIdentifier, existed.recordset[0].Id)
+        .input("rating", sql.Int, numericRating)
+        .input("comment", sql.NVarChar(1000), normalizedComment)
         .query(
           `UPDATE dbo.ProductReviews
            SET Rating = @rating,
                Comment = @comment,
                UpdatedAt = SYSUTCDATETIME()
-           WHERE Id = @id`
+           WHERE Id = @id`,
         );
     } else {
       await pool
         .request()
-        .input('id', sql.UniqueIdentifier, createGuid())
-        .input('productId', sql.UniqueIdentifier, id)
-        .input('userId', sql.UniqueIdentifier, normalizedUserId)
-        .input('rating', sql.Int, numericRating)
-        .input('comment', sql.NVarChar(1000), normalizedComment)
+        .input("id", sql.UniqueIdentifier, createGuid())
+        .input("productId", sql.UniqueIdentifier, id)
+        .input("userId", sql.UniqueIdentifier, normalizedUserId)
+        .input("rating", sql.Int, numericRating)
+        .input("comment", sql.NVarChar(1000), normalizedComment)
         .query(
           `INSERT INTO dbo.ProductReviews(Id, ProductId, UserId, Rating, Comment)
-           VALUES(@id, @productId, @userId, @rating, @comment)`
+           VALUES(@id, @productId, @userId, @rating, @comment)`,
         );
     }
 
@@ -826,14 +1107,14 @@ app.post('/api/products/:id/reviews', async (req, res) => {
   }
 });
 
-app.get('/api/discounts', async (_req, res) => {
+app.get("/api/discounts", async (_req, res) => {
   try {
     const pool = await getPool();
     const result = await pool.request().query(
       `SELECT Id, Code, [Percent], MinOrderValue, StartDate, EndDate
        FROM dbo.DiscountCodes
        WHERE IsActive = 1
-       ORDER BY StartDate DESC`
+       ORDER BY StartDate DESC`,
     );
     res.json(result.recordset);
   } catch (error) {
@@ -841,22 +1122,22 @@ app.get('/api/discounts', async (_req, res) => {
   }
 });
 
-app.post('/api/discounts', async (req, res) => {
+app.post("/api/discounts", async (req, res) => {
   try {
     const { id, code, percent, minOrderValue, startDate, endDate } = req.body;
     const pool = await getPool();
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
-      .input('code', sql.NVarChar(40), code)
-      .input('percent', sql.Decimal(5, 2), Number(percent || 0))
-      .input('minOrderValue', sql.Decimal(18, 2), Number(minOrderValue || 0))
-      .input('startDate', sql.DateTime2, new Date(startDate))
-      .input('endDate', sql.DateTime2, new Date(endDate))
+      .input("id", sql.UniqueIdentifier, id)
+      .input("code", sql.NVarChar(40), code)
+      .input("percent", sql.Decimal(5, 2), Number(percent || 0))
+      .input("minOrderValue", sql.Decimal(18, 2), Number(minOrderValue || 0))
+      .input("startDate", sql.DateTime2, new Date(startDate))
+      .input("endDate", sql.DateTime2, new Date(endDate))
       .query(
         `INSERT INTO dbo.DiscountCodes(Id, Code, [Percent], MinOrderValue, StartDate, EndDate, IsActive)
-         VALUES(@id, @code, @percent, @minOrderValue, @startDate, @endDate, 1)`
+         VALUES(@id, @code, @percent, @minOrderValue, @startDate, @endDate, 1)`,
       );
 
     res.status(201).json({ ok: true });
@@ -865,13 +1146,13 @@ app.post('/api/discounts', async (req, res) => {
   }
 });
 
-app.get('/api/users', async (_req, res) => {
+app.get("/api/users", async (_req, res) => {
   try {
     const pool = await getPool();
     const result = await pool.request().query(
       `SELECT Id, FullName, Email, Phone, Role, IsActive
        FROM dbo.Users
-       ORDER BY CreatedAt DESC`
+       ORDER BY CreatedAt DESC`,
     );
     res.json(result.recordset);
   } catch (error) {
@@ -879,7 +1160,7 @@ app.get('/api/users', async (_req, res) => {
   }
 });
 
-app.get('/api/admin/revenue-by-owner', async (_req, res) => {
+app.get("/api/admin/revenue-by-owner", async (_req, res) => {
   try {
     await ensureProductOwnerColumn();
     const pool = await getPool();
@@ -913,7 +1194,7 @@ app.get('/api/admin/revenue-by-owner', async (_req, res) => {
            ON o.Id = oi.OrderId
        WHERE u.Role = 'owner'
        GROUP BY u.Id, u.FullName, u.Email
-       ORDER BY Revenue DESC, OwnerName ASC`
+       ORDER BY Revenue DESC, OwnerName ASC`,
     );
 
     res.json(result.recordset);
@@ -922,22 +1203,22 @@ app.get('/api/admin/revenue-by-owner', async (_req, res) => {
   }
 });
 
-app.post('/api/users', async (req, res) => {
+app.post("/api/users", async (req, res) => {
   try {
     const { id, fullName, email, phone, role, isActive = true } = req.body;
     const pool = await getPool();
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
-      .input('fullName', sql.NVarChar(120), fullName)
-      .input('email', sql.NVarChar(150), email)
-      .input('phone', sql.NVarChar(20), phone || null)
-      .input('role', sql.NVarChar(20), role)
-      .input('isActive', sql.Bit, isActive)
+      .input("id", sql.UniqueIdentifier, id)
+      .input("fullName", sql.NVarChar(120), fullName)
+      .input("email", sql.NVarChar(150), email)
+      .input("phone", sql.NVarChar(20), phone || null)
+      .input("role", sql.NVarChar(20), role)
+      .input("isActive", sql.Bit, isActive)
       .query(
         `INSERT INTO dbo.Users(Id, FullName, Email, Phone, Role, IsActive)
-         VALUES(@id, @fullName, @email, @phone, @role, @isActive)`
+         VALUES(@id, @fullName, @email, @phone, @role, @isActive)`,
       );
 
     res.status(201).json({ ok: true });
@@ -946,7 +1227,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id', async (req, res) => {
+app.put("/api/users/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { fullName, email, phone, role, isActive } = req.body;
@@ -954,17 +1235,17 @@ app.put('/api/users/:id', async (req, res) => {
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
-      .input('fullName', sql.NVarChar(120), fullName)
-      .input('email', sql.NVarChar(150), email)
-      .input('phone', sql.NVarChar(20), phone || null)
-      .input('role', sql.NVarChar(20), role)
-      .input('isActive', sql.Bit, isActive)
+      .input("id", sql.UniqueIdentifier, id)
+      .input("fullName", sql.NVarChar(120), fullName)
+      .input("email", sql.NVarChar(150), email)
+      .input("phone", sql.NVarChar(20), phone || null)
+      .input("role", sql.NVarChar(20), role)
+      .input("isActive", sql.Bit, isActive)
       .query(
         `UPDATE dbo.Users
          SET FullName=@fullName, Email=@email, Phone=@phone,
              Role=@role, IsActive=@isActive, UpdatedAt=SYSUTCDATETIME()
-         WHERE Id=@id`
+         WHERE Id=@id`,
       );
 
     res.json({ ok: true });
@@ -973,19 +1254,19 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-app.patch('/api/users/:id/toggle-active', async (req, res) => {
+app.patch("/api/users/:id/toggle-active", async (req, res) => {
   try {
     const { id } = req.params;
     const pool = await getPool();
 
     await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
+      .input("id", sql.UniqueIdentifier, id)
       .query(
         `UPDATE dbo.Users
          SET IsActive = CASE WHEN IsActive = 1 THEN 0 ELSE 1 END,
              UpdatedAt = SYSUTCDATETIME()
-         WHERE Id = @id`
+         WHERE Id = @id`,
       );
 
     res.json({ ok: true });
@@ -994,34 +1275,142 @@ app.patch('/api/users/:id/toggle-active', async (req, res) => {
   }
 });
 
-app.get('/api/orders', async (req, res) => {
+app.get(
+  "/api/admin/dashboard",
+  requireAuth,
+  requireAdmin,
+  async (_req, res) => {
+    try {
+      const pool = await getPool();
+      const result = await pool.request().query(
+        `SELECT
+        (SELECT COUNT(*) FROM dbo.Users WHERE IsActive = 1) AS TotalUsers,
+        (SELECT COUNT(*) FROM dbo.Products WHERE IsActive = 1) AS TotalProducts,
+        (SELECT COUNT(*) FROM dbo.Orders) AS TotalOrders,
+        (SELECT COUNT(*) FROM dbo.Orders WHERE LOWER([Status]) = 'processing') AS ProcessingOrders,
+        (SELECT COALESCE(SUM(CASE
+          WHEN LOWER(PaymentStatus) = 'paid' AND LOWER([Status]) <> 'cancelled'
+          THEN Total ELSE 0 END), 0)
+         FROM dbo.Orders) AS TotalRevenue`,
+      );
+
+      const row = result.recordset[0] || {};
+      res.json({
+        totalUsers: Number(row.TotalUsers || 0),
+        totalProducts: Number(row.TotalProducts || 0),
+        totalOrders: Number(row.TotalOrders || 0),
+        processingOrders: Number(row.ProcessingOrders || 0),
+        totalRevenue: Number(row.TotalRevenue || 0),
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get("/api/admin/orders", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request().query(
+      `SELECT o.Id, o.OrderCode, o.UserId, o.ShippingAddress, o.PaymentMethod,
+              o.PaymentStatus, o.[Status], o.Subtotal, o.DiscountAmount, o.Total,
+              o.CreatedAt, u.FullName AS CustomerName, u.Email AS CustomerEmail,
+              COUNT(oi.ProductId) AS ItemCount
+       FROM dbo.Orders o
+       INNER JOIN dbo.Users u ON u.Id = o.UserId
+       LEFT JOIN dbo.OrderItems oi ON oi.OrderId = o.Id
+       GROUP BY o.Id, o.OrderCode, o.UserId, o.ShippingAddress, o.PaymentMethod,
+                o.PaymentStatus, o.[Status], o.Subtotal, o.DiscountAmount, o.Total,
+                o.CreatedAt, u.FullName, u.Email
+       ORDER BY o.CreatedAt DESC`,
+    );
+
+    res.json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch(
+  "/api/admin/orders/:id/status",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, paymentStatus } = req.body;
+      const normalizedStatus = String(status || "")
+        .trim()
+        .toLowerCase();
+      const normalizedPaymentStatus = String(paymentStatus || "")
+        .trim()
+        .toLowerCase();
+
+      if (
+        normalizedStatus &&
+        !["processing", "delivered", "cancelled"].includes(normalizedStatus)
+      ) {
+        return res.status(400).json({ message: "Invalid order status" });
+      }
+      if (
+        normalizedPaymentStatus &&
+        !["pending", "paid", "failed"].includes(normalizedPaymentStatus)
+      ) {
+        return res.status(400).json({ message: "Invalid payment status" });
+      }
+
+      const pool = await getPool();
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, id)
+        .input("status", sql.NVarChar(20), normalizedStatus || null)
+        .input(
+          "paymentStatus",
+          sql.NVarChar(20),
+          normalizedPaymentStatus || null,
+        )
+        .query(
+          `UPDATE dbo.Orders
+         SET [Status] = COALESCE(@status, [Status]),
+             PaymentStatus = COALESCE(@paymentStatus, PaymentStatus)
+         WHERE Id = @id`,
+        );
+
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+app.get("/api/orders", async (req, res) => {
   try {
     await ensureProductOwnerColumn();
     const payload = getTokenPayload(req);
-    const role = String(payload?.role || '').toLowerCase();
-    const isOwner = role === 'owner';
-    const isCustomer = role === 'customer';
-    const ownerId = isOwner ? String(payload?.sub || '') : null;
-    const customerId = isCustomer ? String(payload?.sub || '') : null;
+    const role = String(payload?.role || "").toLowerCase();
+    const isOwner = role === "owner";
+    const isCustomer = role === "customer";
+    const ownerId = isOwner ? String(payload?.sub || "") : null;
+    const customerId = isCustomer ? String(payload?.sub || "") : null;
 
     const pool = await getPool();
 
     const ordersRequest = pool.request();
     if (isCustomer) {
-      ordersRequest.input('customerId', sql.UniqueIdentifier, customerId);
+      ordersRequest.input("customerId", sql.UniqueIdentifier, customerId);
     }
 
     const ordersResult = await ordersRequest.query(
       `SELECT o.Id, o.OrderCode, o.UserId, o.ShippingAddress, o.PaymentMethod,
               o.PaymentStatus, o.[Status], o.CreatedAt
        FROM dbo.Orders o
-       ${isCustomer ? 'WHERE o.UserId = @customerId' : ''}
-       ORDER BY o.CreatedAt DESC`
+       ${isCustomer ? "WHERE o.UserId = @customerId" : ""}
+       ORDER BY o.CreatedAt DESC`,
     );
 
     const itemsRequest = pool.request();
     if (isOwner) {
-      itemsRequest.input('ownerId', sql.UniqueIdentifier, ownerId);
+      itemsRequest.input("ownerId", sql.UniqueIdentifier, ownerId);
     }
 
     const itemsResult = await itemsRequest.query(
@@ -1041,7 +1430,7 @@ app.get('/api/orders', async (req, res) => {
               ) AS ImageUrl
        FROM dbo.OrderItems oi
             INNER JOIN dbo.Products p ON p.Id = oi.ProductId
-            ${isOwner ? 'WHERE p.OwnerId = @ownerId' : ''}`
+            ${isOwner ? "WHERE p.OwnerId = @ownerId" : ""}`,
     );
 
     const itemsByOrder = new Map();
@@ -1066,7 +1455,7 @@ app.get('/api/orders', async (req, res) => {
   }
 });
 
-app.post('/api/orders', async (req, res) => {
+app.post("/api/orders", async (req, res) => {
   const transaction = new sql.Transaction(await getPool());
   try {
     const {
@@ -1088,42 +1477,49 @@ app.post('/api/orders', async (req, res) => {
     const orderId = req.body.id;
 
     await orderReq
-      .input('id', sql.UniqueIdentifier, orderId)
-      .input('orderCode', sql.NVarChar(30), orderCode)
-      .input('userId', sql.UniqueIdentifier, userId)
-      .input('shippingAddress', sql.NVarChar(500), shippingAddress)
-      .input('paymentMethod', sql.NVarChar(20), paymentMethod)
-      .input('paymentStatus', sql.NVarChar(20), paymentStatus)
-      .input('status', sql.NVarChar(20), status)
-      .input('subtotal', sql.Decimal(18, 2), Number(subtotal || 0))
-      .input('discountAmount', sql.Decimal(18, 2), Number(discountAmount || 0))
-      .input('total', sql.Decimal(18, 2), Number(total || 0))
+      .input("id", sql.UniqueIdentifier, orderId)
+      .input("orderCode", sql.NVarChar(30), orderCode)
+      .input("userId", sql.UniqueIdentifier, userId)
+      .input("shippingAddress", sql.NVarChar(500), shippingAddress)
+      .input("paymentMethod", sql.NVarChar(20), paymentMethod)
+      .input("paymentStatus", sql.NVarChar(20), paymentStatus)
+      .input("status", sql.NVarChar(20), status)
+      .input("subtotal", sql.Decimal(18, 2), Number(subtotal || 0))
+      .input("discountAmount", sql.Decimal(18, 2), Number(discountAmount || 0))
+      .input("total", sql.Decimal(18, 2), Number(total || 0))
       .query(
         `INSERT INTO dbo.Orders(Id, OrderCode, UserId, ShippingAddress, PaymentMethod, PaymentStatus, [Status], Subtotal, DiscountAmount, Total)
-         VALUES(@id, @orderCode, @userId, @shippingAddress, @paymentMethod, @paymentStatus, @status, @subtotal, @discountAmount, @total)`
+         VALUES(@id, @orderCode, @userId, @shippingAddress, @paymentMethod, @paymentStatus, @status, @subtotal, @discountAmount, @total)`,
       );
 
     for (const item of items || []) {
       const quantity = Number(item.quantity || 1);
-      const sizeLabel = String(item.sizeLabel || '').trim().toUpperCase();
-      const colorHexRaw = String(item.colorHex || '').trim().toUpperCase();
-      const colorHex = colorHexRaw.length === 0
-        ? null
-        : (colorHexRaw.startsWith('#') ? colorHexRaw : `#${colorHexRaw}`);
+      const sizeLabel = String(item.sizeLabel || "")
+        .trim()
+        .toUpperCase();
+      const colorHexRaw = String(item.colorHex || "")
+        .trim()
+        .toUpperCase();
+      const colorHex =
+        colorHexRaw.length === 0
+          ? null
+          : colorHexRaw.startsWith("#")
+            ? colorHexRaw
+            : `#${colorHexRaw}`;
 
       if (!item.productId || !sizeLabel || quantity <= 0) {
-        throw new Error('Invalid order item payload');
+        throw new Error("Invalid order item payload");
       }
 
       const reserveReq = new sql.Request(transaction);
       reserveReq
-        .input('productId', sql.UniqueIdentifier, item.productId)
-        .input('sizeLabel', sql.NVarChar(10), sizeLabel)
-        .input('quantity', sql.Int, quantity);
+        .input("productId", sql.UniqueIdentifier, item.productId)
+        .input("sizeLabel", sql.NVarChar(10), sizeLabel)
+        .input("quantity", sql.Int, quantity);
 
       let reserveResult;
       if (colorHex) {
-        reserveReq.input('colorHex', sql.NVarChar(10), colorHex);
+        reserveReq.input("colorHex", sql.NVarChar(10), colorHex);
         reserveResult = await reserveReq.query(
           `UPDATE pv
            SET pv.Stock = pv.Stock - @quantity
@@ -1132,7 +1528,7 @@ app.post('/api/orders', async (req, res) => {
            WHERE pv.ProductId = @productId
              AND UPPER(pv.SizeLabel) = @sizeLabel
              AND UPPER(pv.ColorHex) = @colorHex
-             AND pv.Stock >= @quantity`
+             AND pv.Stock >= @quantity`,
         );
       } else {
         reserveResult = await reserveReq.query(
@@ -1147,18 +1543,21 @@ app.post('/api/orders', async (req, res) => {
                AND UPPER(SizeLabel) = @sizeLabel
                AND Stock >= @quantity
              ORDER BY Stock DESC
-           )`
+           )`,
         );
       }
 
       if (!reserveResult.rowsAffected || reserveResult.rowsAffected[0] === 0) {
-        throw new Error(`Insufficient stock for product ${item.productId}, size ${sizeLabel}`);
+        throw new Error(
+          `Insufficient stock for product ${item.productId}, size ${sizeLabel}`,
+        );
       }
-      const reservedColorHex = reserveResult.recordset[0]?.ReservedColorHex || colorHex;
+      const reservedColorHex =
+        reserveResult.recordset[0]?.ReservedColorHex || colorHex;
 
       const syncProductStockReq = new sql.Request(transaction);
       await syncProductStockReq
-        .input('productId', sql.UniqueIdentifier, item.productId)
+        .input("productId", sql.UniqueIdentifier, item.productId)
         .query(
           `UPDATE dbo.Products
            SET Stock = ISNULL((
@@ -1167,21 +1566,21 @@ app.post('/api/orders', async (req, res) => {
              WHERE ProductId = @productId
            ), 0),
            UpdatedAt = SYSUTCDATETIME()
-           WHERE Id = @productId`
+           WHERE Id = @productId`,
         );
 
       const itemReq = new sql.Request(transaction);
       await itemReq
-        .input('orderId', sql.UniqueIdentifier, orderId)
-        .input('productId', sql.UniqueIdentifier, item.productId)
-        .input('sizeLabel', sql.NVarChar(10), sizeLabel)
-        .input('colorHex', sql.NVarChar(10), reservedColorHex)
-        .input('quantity', sql.Int, quantity)
-        .input('unitPrice', sql.Decimal(18, 2), Number(item.unitPrice || 0))
-        .input('lineTotal', sql.Decimal(18, 2), Number(item.lineTotal || 0))
+        .input("orderId", sql.UniqueIdentifier, orderId)
+        .input("productId", sql.UniqueIdentifier, item.productId)
+        .input("sizeLabel", sql.NVarChar(10), sizeLabel)
+        .input("colorHex", sql.NVarChar(10), reservedColorHex)
+        .input("quantity", sql.Int, quantity)
+        .input("unitPrice", sql.Decimal(18, 2), Number(item.unitPrice || 0))
+        .input("lineTotal", sql.Decimal(18, 2), Number(item.lineTotal || 0))
         .query(
           `INSERT INTO dbo.OrderItems(OrderId, ProductId, SizeLabel, ColorHex, Quantity, UnitPrice, LineTotal)
-           VALUES(@orderId, @productId, @sizeLabel, @colorHex, @quantity, @unitPrice, @lineTotal)`
+           VALUES(@orderId, @productId, @sizeLabel, @colorHex, @quantity, @unitPrice, @lineTotal)`,
         );
     }
 
@@ -1195,85 +1594,97 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-app.patch('/api/orders/:id/status', async (req, res) => {
+app.patch("/api/orders/:id/status", async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const normalizedStatus = String(status || '').trim().toLowerCase();
-    if (!['processing', 'delivered', 'cancelled'].includes(normalizedStatus)) {
-      return res.status(400).json({ message: 'Invalid status' });
+    const normalizedStatus = String(status || "")
+      .trim()
+      .toLowerCase();
+    if (!["processing", "delivered", "cancelled"].includes(normalizedStatus)) {
+      return res.status(400).json({ message: "Invalid status" });
     }
     await ensureProductOwnerColumn();
     const payload = getTokenPayload(req);
-    const isOwner = payload?.role === 'owner';
-    const ownerId = isOwner ? String(payload.sub || '') : null;
+    const isOwner = payload?.role === "owner";
+    const ownerId = isOwner ? String(payload.sub || "") : null;
 
     const pool = await getPool();
 
     if (isOwner) {
       const ownsOrder = await pool
         .request()
-        .input('id', sql.UniqueIdentifier, id)
-        .input('ownerId', sql.UniqueIdentifier, ownerId)
+        .input("id", sql.UniqueIdentifier, id)
+        .input("ownerId", sql.UniqueIdentifier, ownerId)
         .query(
           `SELECT TOP 1 o.Id
            FROM dbo.Orders o
            INNER JOIN dbo.OrderItems oi ON oi.OrderId = o.Id
            INNER JOIN dbo.Products p ON p.Id = oi.ProductId
-           WHERE o.Id = @id AND p.OwnerId = @ownerId`
+           WHERE o.Id = @id AND p.OwnerId = @ownerId`,
         );
 
       if (ownsOrder.recordset.length === 0) {
-        return res.status(403).json({ message: 'Forbidden' });
+        return res.status(403).json({ message: "Forbidden" });
       }
     }
 
     const currentOrderResult = await pool
       .request()
-      .input('id', sql.UniqueIdentifier, id)
+      .input("id", sql.UniqueIdentifier, id)
       .query(
         `SELECT TOP 1 Id, [Status]
          FROM dbo.Orders
-         WHERE Id = @id`
+         WHERE Id = @id`,
       );
 
     if (currentOrderResult.recordset.length === 0) {
-      return res.status(404).json({ message: 'Order not found' });
+      return res.status(404).json({ message: "Order not found" });
     }
 
-    const previousStatus = String(currentOrderResult.recordset[0].Status || '').toLowerCase();
-    const shouldRestoreStock = normalizedStatus === 'cancelled' && previousStatus !== 'cancelled';
+    const previousStatus = String(
+      currentOrderResult.recordset[0].Status || "",
+    ).toLowerCase();
+    const shouldRestoreStock =
+      normalizedStatus === "cancelled" && previousStatus !== "cancelled";
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
     try {
       await new sql.Request(transaction)
-        .input('id', sql.UniqueIdentifier, id)
-        .input('status', sql.NVarChar(20), normalizedStatus)
+        .input("id", sql.UniqueIdentifier, id)
+        .input("status", sql.NVarChar(20), normalizedStatus)
         .query(
           `UPDATE dbo.Orders
            SET [Status]=@status, UpdatedAt=SYSUTCDATETIME()
-           WHERE Id=@id`
+           WHERE Id=@id`,
         );
 
       if (shouldRestoreStock) {
         const itemsResult = await new sql.Request(transaction)
-          .input('orderId', sql.UniqueIdentifier, id)
+          .input("orderId", sql.UniqueIdentifier, id)
           .query(
             `SELECT ProductId, SizeLabel, ColorHex, Quantity
              FROM dbo.OrderItems
-             WHERE OrderId = @orderId`
+             WHERE OrderId = @orderId`,
           );
 
         const productIds = new Set();
         for (const item of itemsResult.recordset) {
           const productId = String(item.ProductId);
-          const sizeLabel = String(item.SizeLabel || '').trim().toUpperCase();
-          const colorHexRaw = String(item.ColorHex || '').trim().toUpperCase();
-          const colorHex = colorHexRaw.length === 0
-            ? null
-            : (colorHexRaw.startsWith('#') ? colorHexRaw : `#${colorHexRaw}`);
+          const sizeLabel = String(item.SizeLabel || "")
+            .trim()
+            .toUpperCase();
+          const colorHexRaw = String(item.ColorHex || "")
+            .trim()
+            .toUpperCase();
+          const colorHex =
+            colorHexRaw.length === 0
+              ? null
+              : colorHexRaw.startsWith("#")
+                ? colorHexRaw
+                : `#${colorHexRaw}`;
           const quantity = Number(item.Quantity || 0);
 
           if (!productId || !sizeLabel || quantity <= 0) {
@@ -1281,19 +1692,19 @@ app.patch('/api/orders/:id/status', async (req, res) => {
           }
 
           const restockReq = new sql.Request(transaction)
-            .input('productId', sql.UniqueIdentifier, productId)
-            .input('sizeLabel', sql.NVarChar(10), sizeLabel)
-            .input('quantity', sql.Int, quantity);
+            .input("productId", sql.UniqueIdentifier, productId)
+            .input("sizeLabel", sql.NVarChar(10), sizeLabel)
+            .input("quantity", sql.Int, quantity);
 
           let restockResult;
           if (colorHex) {
-            restockReq.input('colorHex', sql.NVarChar(10), colorHex);
+            restockReq.input("colorHex", sql.NVarChar(10), colorHex);
             restockResult = await restockReq.query(
               `UPDATE dbo.ProductVariants
                SET Stock = Stock + @quantity
                WHERE ProductId = @productId
                  AND UPPER(SizeLabel) = @sizeLabel
-                 AND UPPER(ColorHex) = @colorHex`
+                 AND UPPER(ColorHex) = @colorHex`,
             );
           } else {
             restockResult = await restockReq.query(
@@ -1305,12 +1716,17 @@ app.patch('/api/orders/:id/status', async (req, res) => {
                  WHERE ProductId = @productId
                    AND UPPER(SizeLabel) = @sizeLabel
                  ORDER BY Stock ASC
-               )`
+               )`,
             );
           }
 
-          if (!restockResult.rowsAffected || restockResult.rowsAffected[0] === 0) {
-            throw new Error(`Failed to restore stock for product ${productId}, size ${sizeLabel}`);
+          if (
+            !restockResult.rowsAffected ||
+            restockResult.rowsAffected[0] === 0
+          ) {
+            throw new Error(
+              `Failed to restore stock for product ${productId}, size ${sizeLabel}`,
+            );
           }
 
           productIds.add(productId);
@@ -1318,7 +1734,7 @@ app.patch('/api/orders/:id/status', async (req, res) => {
 
         for (const productId of productIds) {
           await new sql.Request(transaction)
-            .input('productId', sql.UniqueIdentifier, productId)
+            .input("productId", sql.UniqueIdentifier, productId)
             .query(
               `UPDATE dbo.Products
                SET Stock = ISNULL((
@@ -1327,7 +1743,7 @@ app.patch('/api/orders/:id/status', async (req, res) => {
                  WHERE ProductId = @productId
                ), 0),
                UpdatedAt = SYSUTCDATETIME()
-               WHERE Id = @productId`
+               WHERE Id = @productId`,
             );
         }
       }
