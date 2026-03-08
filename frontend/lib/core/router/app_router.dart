@@ -5,6 +5,8 @@ import 'package:frontend/injection_container.dart';
 import 'package:frontend/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:frontend/features/auth/presentation/pages/login_page.dart';
 import 'package:frontend/features/auth/presentation/pages/register_page.dart';
+import 'package:frontend/features/auth/presentation/pages/profile_page.dart';
+import 'package:frontend/features/auth/presentation/pages/otp_verification_page.dart';
 import 'package:frontend/features/product/presentation/pages/home_page.dart';
 import 'package:frontend/features/product/presentation/pages/product_detail_page.dart';
 import 'package:frontend/features/admin/presentation/pages/admin_dashboard_page.dart';
@@ -35,6 +37,17 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const RegisterPage(),
     ),
     GoRoute(path: '/home', builder: (context, state) => const HomePage()),
+    GoRoute(
+      path: '/profile',
+      builder: (context, state) => const ProfilePage(),
+    ),
+    GoRoute(
+      path: '/otp-verify',
+      builder: (context, state) {
+        final email = state.uri.queryParameters['email'] ?? '';
+        return OTPVerificationPage(email: email);
+      },
+    ),
     GoRoute(path: '/admin', builder: (context, state) => const AdminDashboardPage()),
     GoRoute(
       path: '/product/:id',
