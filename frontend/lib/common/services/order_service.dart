@@ -130,6 +130,27 @@ class OrderService {
     }
   }
 
+  /// Cancel order (user can only cancel processing orders)
+  Future<Map<String, dynamic>> cancelOrder(String orderId) async {
+    try {
+      final response = await dio.patch(
+        '$baseUrl/api/orders/$orderId/status',
+        data: {'status': 'cancelled'},
+      );
+
+      return {
+        'success': response.statusCode == 200,
+        'message': 'Order cancelled successfully',
+        'data': response.data,
+      };
+    } on DioException catch (e) {
+      return {
+        'success': false,
+        'error': e.response?.data['message'] ?? e.message,
+      };
+    }
+  }
+
   String _generateGuid() {
     return '${DateTime.now().millisecondsSinceEpoch}-${(DateTime.now().microsecond).toString().padLeft(6, '0')}';
   }
