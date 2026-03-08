@@ -16,6 +16,12 @@ class ProductProvider extends ChangeNotifier {
   // Filters
   String? _selectedCategory;
   String _searchQuery = '';
+  double _minPrice = 0;
+  double _maxPrice = 999999;
+  bool _inStockOnly = false;
+  String _sortBy = 'newest';
+  int _currentPage = 1;
+  int _totalPages = 1;
 
   ProductProvider({
     ProductService? productService,
@@ -31,6 +37,12 @@ class ProductProvider extends ChangeNotifier {
   String? get error => _error;
   String? get selectedCategory => _selectedCategory;
   String get searchQuery => _searchQuery;
+  double get minPrice => _minPrice;
+  double get maxPrice => _maxPrice;
+  bool get inStockOnly => _inStockOnly;
+  String get sortBy => _sortBy;
+  int get currentPage => _currentPage;
+  int get totalPages => _totalPages;
 
   /// Fetch all products from API
   Future<void> fetchProducts() async {
@@ -221,5 +233,73 @@ class ProductProvider extends ChangeNotifier {
       (sum, product) => sum + product.finalPrice,
     );
     return sum / _filteredProducts.length;
+  }
+
+  /// Advanced search with filters
+  Future<void> searchAdvanced({
+    String query = '',
+    double? minPrice,
+    double? maxPrice,
+    String? categoryId,
+    bool inStockOnly = false,
+    String sortBy = 'newest',
+    int page = 1,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    _searchQuery = query;
+    _minPrice = minPrice ?? 0;
+    _maxPrice = maxPrice ?? 999999;
+    _inStockOnly = inStockOnly;
+    _sortBy = sortBy;
+    _currentPage = page;
+    _selectedCategory = categoryId;
+    notifyListeners();
+
+    try {
+      final result = await productService.searchAdvanced(
+        query: query,
+        minPrice: minPrice,
+        maxPrice: maxPrice,
+        categoryId: categoryId,
+        inStockOnly: inStockOnly,
+        sortBy: sortBy,
+        page: page,
+        limit: 50,
+      );
+
+      if (result['success']) {
+        _filteredProducts = result['data'] ?? [];
+        final pagination = result['pagination'] as Map<String, dynamic>?;
+        _totalPages = pagination?['totalPages'] ?? 1;
+        _error = null;
+      } else {
+        _error = result['error'] as String? ?? 'Search failed';
+      }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Set price range filter
+  void setPriceRange(double min, double max) {
+    _minPrice = min;
+    _maxPrice = max;
+    notifyListeners();
+  }
+
+  /// Toggle in stock only filter
+  void setInStockOnly(bool value) {
+    _inStockOnly = value;
+    notifyListeners();
+  }
+
+  /// Set sort option
+  void setSortBy(String sortOption) {
+    _sortBy = sortOption;
+    notifyListeners();
   }
 }
