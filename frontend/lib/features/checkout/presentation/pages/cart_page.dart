@@ -18,6 +18,7 @@ class CartPage extends StatefulWidget {
 
 class _CartPageState extends State<CartPage> {
   late TextEditingController _addressController;
+  late TextEditingController _couponController;
   String _selectedPaymentMethod = 'credit_card';
   bool _isLoading = false;
 
@@ -25,11 +26,13 @@ class _CartPageState extends State<CartPage> {
   void initState() {
     super.initState();
     _addressController = TextEditingController();
+    _couponController = TextEditingController();
   }
 
   @override
   void dispose() {
     _addressController.dispose();
+    _couponController.dispose();
     super.dispose();
   }
 
@@ -66,7 +69,7 @@ class _CartPageState extends State<CartPage> {
         shippingAddress: _addressController.text,
         paymentMethod: _selectedPaymentMethod,
         subtotal: cart.subtotal,
-        discountAmount: 0,
+        discountAmount: cart.discountAmount,
         total: cart.total,
         items: cart.items.map((item) => item.toJson()).toList(),
       );
@@ -172,6 +175,12 @@ class _CartPageState extends State<CartPage> {
                         label: 'Subtotal',
                         value: '\$${cart.subtotal.toStringAsFixed(2)}',
                       ),
+                      if (cart.appliedCouponCode != null)
+                        _SummaryRow(
+                          label: 'Discount (${cart.discountPercent.toStringAsFixed(0)}%)',
+                          value: '-\$${cart.discountAmount.toStringAsFixed(2)}',
+                          highlight: true,
+                        ),
                       _SummaryRow(
                         label: 'Tax (10%)',
                         value: '\$${cart.estimatedTax.toStringAsFixed(2)}',
@@ -189,6 +198,112 @@ class _CartPageState extends State<CartPage> {
                         value: '\$${cart.total.toStringAsFixed(2)}',
                         isTotal: true,
                       ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+
+                // Coupon Section
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Promotional Code',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _couponController,
+                              enabled: cart.appliedCouponCode == null,
+                              decoration: InputDecoration(
+                                hintText: 'Enter coupon code',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                                suffixIcon: cart.appliedCouponCode != null
+                                    ? Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: Icon(
+                                          Icons.check_circle,
+                                          color: Colors.green[600],
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              textCapitalization: TextCapitalization.uppercase,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (cart.appliedCouponCode == null)
+                            ElevatedButton(
+                              onPressed: () async {
+                                if (_couponController.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Please enter a coupon code'),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                final result =
+                                    await cart.applyCoupon(_couponController.text.trim());
+                                if (!mounted) return;
+                                if (result['valid'] as bool) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(result['message'] as String),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(result['message'] as String),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                              ),
+                              child: const Text('Apply'),
+                            )
+                          else
+                            ElevatedButton(
+                              onPressed: () {
+                                cart.removeCoupon();
+                                _couponController.clear();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                                backgroundColor: Colors.grey,
+                              ),
+                              child: const Text('Remove'),
+                            ),
+                        ],
+                      ),
+                      if (cart.error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                            cart.error!,
+                            style: TextStyle(color: Colors.red[600], fontSize: 12),
+                          ),
+                        ),
                     ],
                   ),
                 ),
