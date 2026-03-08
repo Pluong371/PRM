@@ -146,9 +146,66 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Update user profile
+  Future<bool> updateProfile({
+    String? fullName,
+    String? email,
+    String? phone,
+  }) async {
+    if (_token == null) {
+      _errorMessage = 'Not authenticated';
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await _authService.updateProfile(
+        token: _token!,
+        fullName: fullName,
+        email: email,
+        phone: phone,
+      );
+
+      if (result['success']) {
+        _user = result['user'];
+        _errorMessage = null;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = result['message'] as String?;
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   // Clear error message
   void clearError() {
     _errorMessage = null;
+    notifyListeners();
+  }
+
+  // Set token directly (used by OTP verification)
+  Future<void> setTokenDirectly(String token) async {
+    _token = token;
+    await _secureStorage.write(key: 'auth_token', value: token);
+    notifyListeners();
+  }
+
+  // Set user directly (used by OTP verification)
+  void setUser(User user) {
+    _user = user;
     notifyListeners();
   }
 }
