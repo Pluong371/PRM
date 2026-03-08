@@ -9,6 +9,7 @@ import 'package:frontend/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:frontend/common/providers/auth_provider.dart';
 import 'package:frontend/common/providers/product_provider.dart';
 import 'package:frontend/common/providers/cart_provider.dart';
+import 'package:frontend/common/providers/admin_provider.dart';
 
 class ShopWebApp extends StatelessWidget {
   const ShopWebApp({super.key});
@@ -25,6 +26,9 @@ class ShopWebApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => CartProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AdminProvider(),
         ),
         BlocProvider(
           create: (_) => sl<AuthBloc>()..add(const CheckAuthEvent()),

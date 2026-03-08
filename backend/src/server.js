@@ -42,6 +42,28 @@ function getTokenPayload(req) {
   }
 }
 
+function requireAuth(req, res, next) {
+  const payload = getTokenPayload(req);
+  if (!payload) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  req.user = payload;
+  return next();
+}
+
+function requireAdmin(req, res, next) {
+  const payload = req.user || getTokenPayload(req);
+  const role = String(payload?.role || '').trim().toLowerCase();
+  if (!payload) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  if (role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+  req.user = payload;
+  return next();
+}
+
 async function ensureProductReviewsTable() {
   const pool = await getPool();
   await pool.request().query(
@@ -141,6 +163,25 @@ async function ensureProductOwnerColumn() {
      BEGIN
        ALTER TABLE dbo.Products
        ADD OwnerId UNIQUEIDENTIFIER NULL;
+     END`
+  );
+}
+
+async function ensureCategoriesTable() {
+  const pool = await getPool();
+  await pool.request().query(
+    `IF OBJECT_ID('dbo.Categories', 'U') IS NULL
+     BEGIN
+       CREATE TABLE dbo.Categories (
+         Id UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_Categories PRIMARY KEY,
+         Name NVARCHAR(120) NOT NULL,
+         [Description] NVARCHAR(500) NULL,
+         ImageUrl NVARCHAR(500) NULL,
+         IsActive BIT NOT NULL CONSTRAINT DF_Categories_IsActive DEFAULT 1,
+         CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_Categories_CreatedAt DEFAULT SYSUTCDATETIME(),
+         UpdatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_Categories_UpdatedAt DEFAULT SYSUTCDATETIME(),
+         CONSTRAINT UQ_Categories_Name UNIQUE (Name)
+       );
      END`
   );
 }
@@ -762,6 +803,113 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 
+app.get('/api/categories', async (_req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const pool = await getPool();
+    const result = await pool.request().query(
+      `SELECT Id, Name, [Description], ImageUrl, IsActive, CreatedAt, UpdatedAt
+       FROM dbo.Categories
+       WHERE IsActive = 1
+       ORDER BY Name ASC`
+    );
+
+    res.json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post('/api/categories', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const { name, description, imageUrl } = req.body;
+    const normalizedName = String(name || '').trim();
+
+    if (!normalizedName) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+
+    const pool = await getPool();
+    await pool
+      .request()
+      .input('id', sql.UniqueIdentifier, createGuid())
+      .input('name', sql.NVarChar(120), normalizedName)
+      .input('description', sql.NVarChar(500), description ? String(description).trim() : null)
+      .input('imageUrl', sql.NVarChar(500), imageUrl ? String(imageUrl).trim() : null)
+      .query(
+        `INSERT INTO dbo.Categories(Id, Name, [Description], ImageUrl, IsActive)
+         VALUES(@id, @name, @description, @imageUrl, 1)`
+      );
+
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    if (String(error.message || '').includes('UQ_Categories_Name')) {
+      return res.status(409).json({ message: 'Category name already exists' });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.put('/api/categories/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const { id } = req.params;
+    const { name, description, imageUrl, isActive } = req.body;
+    const normalizedName = String(name || '').trim();
+
+    if (!normalizedName) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+
+    const pool = await getPool();
+    await pool
+      .request()
+      .input('id', sql.UniqueIdentifier, id)
+      .input('name', sql.NVarChar(120), normalizedName)
+      .input('description', sql.NVarChar(500), description ? String(description).trim() : null)
+      .input('imageUrl', sql.NVarChar(500), imageUrl ? String(imageUrl).trim() : null)
+      .input('isActive', sql.Bit, isActive === false ? 0 : 1)
+      .query(
+        `UPDATE dbo.Categories
+         SET Name = @name,
+             [Description] = @description,
+             ImageUrl = @imageUrl,
+             IsActive = @isActive,
+             UpdatedAt = SYSUTCDATETIME()
+         WHERE Id = @id`
+      );
+
+    res.json({ ok: true });
+  } catch (error) {
+    if (String(error.message || '').includes('UQ_Categories_Name')) {
+      return res.status(409).json({ message: 'Category name already exists' });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete('/api/categories/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureCategoriesTable();
+    const { id } = req.params;
+    const pool = await getPool();
+    await pool
+      .request()
+      .input('id', sql.UniqueIdentifier, id)
+      .query(
+        `UPDATE dbo.Categories
+         SET IsActive = 0,
+             UpdatedAt = SYSUTCDATETIME()
+         WHERE Id = @id`
+      );
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 app.get('/api/products/:id/reviews', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1069,6 +1217,90 @@ app.patch('/api/users/:id/toggle-active', async (req, res) => {
         `UPDATE dbo.Users
          SET IsActive = CASE WHEN IsActive = 1 THEN 0 ELSE 1 END,
              UpdatedAt = SYSUTCDATETIME()
+         WHERE Id = @id`
+      );
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get('/api/admin/dashboard', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request().query(
+      `SELECT
+        (SELECT COUNT(*) FROM dbo.Users WHERE IsActive = 1) AS TotalUsers,
+        (SELECT COUNT(*) FROM dbo.Products WHERE IsActive = 1) AS TotalProducts,
+        (SELECT COUNT(*) FROM dbo.Orders) AS TotalOrders,
+        (SELECT COUNT(*) FROM dbo.Orders WHERE LOWER([Status]) = 'processing') AS ProcessingOrders,
+        (SELECT COALESCE(SUM(CASE
+          WHEN LOWER(PaymentStatus) = 'paid' AND LOWER([Status]) <> 'cancelled'
+          THEN Total ELSE 0 END), 0)
+         FROM dbo.Orders) AS TotalRevenue`
+    );
+
+    const row = result.recordset[0] || {};
+    res.json({
+      totalUsers: Number(row.TotalUsers || 0),
+      totalProducts: Number(row.TotalProducts || 0),
+      totalOrders: Number(row.TotalOrders || 0),
+      processingOrders: Number(row.ProcessingOrders || 0),
+      totalRevenue: Number(row.TotalRevenue || 0),
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.get('/api/admin/orders', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request().query(
+      `SELECT o.Id, o.OrderCode, o.UserId, o.ShippingAddress, o.PaymentMethod,
+              o.PaymentStatus, o.[Status], o.Subtotal, o.DiscountAmount, o.Total,
+              o.CreatedAt, u.FullName AS CustomerName, u.Email AS CustomerEmail,
+              COUNT(oi.ProductId) AS ItemCount
+       FROM dbo.Orders o
+       INNER JOIN dbo.Users u ON u.Id = o.UserId
+       LEFT JOIN dbo.OrderItems oi ON oi.OrderId = o.Id
+       GROUP BY o.Id, o.OrderCode, o.UserId, o.ShippingAddress, o.PaymentMethod,
+                o.PaymentStatus, o.[Status], o.Subtotal, o.DiscountAmount, o.Total,
+                o.CreatedAt, u.FullName, u.Email
+       ORDER BY o.CreatedAt DESC`
+    );
+
+    res.json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch('/api/admin/orders/:id/status', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, paymentStatus } = req.body;
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+    const normalizedPaymentStatus = String(paymentStatus || '').trim().toLowerCase();
+
+    if (normalizedStatus && !['processing', 'delivered', 'cancelled'].includes(normalizedStatus)) {
+      return res.status(400).json({ message: 'Invalid order status' });
+    }
+    if (normalizedPaymentStatus && !['pending', 'paid', 'failed'].includes(normalizedPaymentStatus)) {
+      return res.status(400).json({ message: 'Invalid payment status' });
+    }
+
+    const pool = await getPool();
+    await pool
+      .request()
+      .input('id', sql.UniqueIdentifier, id)
+      .input('status', sql.NVarChar(20), normalizedStatus || null)
+      .input('paymentStatus', sql.NVarChar(20), normalizedPaymentStatus || null)
+      .query(
+        `UPDATE dbo.Orders
+         SET [Status] = COALESCE(@status, [Status]),
+             PaymentStatus = COALESCE(@paymentStatus, PaymentStatus)
          WHERE Id = @id`
       );
 
