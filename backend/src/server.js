@@ -555,11 +555,9 @@ app.post("/api/auth/verify-otp", async (req, res) => {
         .request()
         .input("id", sql.UniqueIdentifier, otpRecord.Id)
         .query("UPDATE dbo.UserOTP SET IsExpired = 1 WHERE Id = @id");
-      return res
-        .status(400)
-        .json({
-          message: "Maximum OTP attempts exceeded. Please request a new OTP.",
-        });
+      return res.status(400).json({
+        message: "Maximum OTP attempts exceeded. Please request a new OTP.",
+      });
     }
 
     // Verify OTP code
@@ -941,7 +939,10 @@ app.get("/api/products/search/advanced", async (req, res) => {
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
     const minPriceNum = Math.max(0, parseFloat(minPrice) || 0);
-    const maxPriceNum = Math.max(minPriceNum, parseFloat(maxPrice) || 999999999);
+    const maxPriceNum = Math.max(
+      minPriceNum,
+      parseFloat(maxPrice) || 999999999,
+    );
     const searchQuery = String(q || "").trim();
     const inStock = String(inStockOnly).toLowerCase() === "true";
 
@@ -1044,9 +1045,7 @@ app.get("/api/products/search/advanced", async (req, res) => {
 
       if (productIds.length > 0) {
         const imagesRequest = pool.request();
-        const placeholders = productIds
-          .map((_, idx) => `@id${idx}`)
-          .join(",");
+        const placeholders = productIds.map((_, idx) => `@id${idx}`).join(",");
         productIds.forEach((id, idx) => {
           imagesRequest.input(`id${idx}`, sql.UniqueIdentifier, id);
         });
