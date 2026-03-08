@@ -1636,10 +1636,16 @@ app.post("/api/products/:id/reviews", async (req, res) => {
       const productOwnerResult = await pool
         .request()
         .input("productId", sql.UniqueIdentifier, id)
-        .query(`SELECT TOP 1 OwnerId, Name FROM dbo.Products WHERE Id = @productId`);
+        .query(
+          `SELECT TOP 1 OwnerId, Name FROM dbo.Products WHERE Id = @productId`,
+        );
 
-      const ownerId = String(productOwnerResult.recordset[0]?.OwnerId || "").trim();
-      const productName = String(productOwnerResult.recordset[0]?.Name || "Sản phẩm").trim();
+      const ownerId = String(
+        productOwnerResult.recordset[0]?.OwnerId || "",
+      ).trim();
+      const productName = String(
+        productOwnerResult.recordset[0]?.Name || "Sản phẩm",
+      ).trim();
       if (ownerId && ownerId !== normalizedUserId) {
         await createUserNotification({
           userId: ownerId,
@@ -1666,10 +1672,16 @@ app.post("/api/products/:id/reviews", async (req, res) => {
       const productOwnerResult = await pool
         .request()
         .input("productId", sql.UniqueIdentifier, id)
-        .query(`SELECT TOP 1 OwnerId, Name FROM dbo.Products WHERE Id = @productId`);
+        .query(
+          `SELECT TOP 1 OwnerId, Name FROM dbo.Products WHERE Id = @productId`,
+        );
 
-      const ownerId = String(productOwnerResult.recordset[0]?.OwnerId || "").trim();
-      const productName = String(productOwnerResult.recordset[0]?.Name || "Sản phẩm").trim();
+      const ownerId = String(
+        productOwnerResult.recordset[0]?.OwnerId || "",
+      ).trim();
+      const productName = String(
+        productOwnerResult.recordset[0]?.Name || "Sản phẩm",
+      ).trim();
       if (ownerId && ownerId !== normalizedUserId) {
         await createUserNotification({
           userId: ownerId,
