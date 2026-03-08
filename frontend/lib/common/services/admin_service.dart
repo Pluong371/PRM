@@ -128,4 +128,28 @@ class AdminService {
       };
     }
   }
+
+  Future<Map<String, dynamic>> getUsers() async {
+    try {
+      final response = await dio.get('$baseUrl/api/users');
+      return {'success': true, 'data': response.data};
+    } on DioException catch (e) {
+      return {
+        'success': false,
+        'error': e.response?.data['message'] ?? e.message,
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> toggleUserActive(String userId) async {
+    try {
+      final response = await dio.patch('$baseUrl/api/users/$userId/toggle-active');
+      return {'success': true, 'data': response.data};
+    } on DioException catch (e) {
+      return {
+        'success': false,
+        'error': e.response?.data['message'] ?? e.message,
+      };
+    }
+  }
 }

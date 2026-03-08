@@ -12,12 +12,14 @@ class AdminProvider extends ChangeNotifier {
   Map<String, dynamic> _dashboard = {};
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _users = [];
 
   bool get isLoading => _isLoading;
   String? get error => _error;
   Map<String, dynamic> get dashboard => _dashboard;
   List<Map<String, dynamic>> get orders => List.unmodifiable(_orders);
   List<Map<String, dynamic>> get categories => List.unmodifiable(_categories);
+  List<Map<String, dynamic>> get users => List.unmodifiable(_users);
 
   Future<void> loadDashboard() async {
     _isLoading = true;
@@ -104,6 +106,37 @@ class AdminProvider extends ChangeNotifier {
     }
 
     await loadDashboard();
+    return true;
+  }
+
+  Future<void> loadUsers() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    final result = await _adminService.getUsers();
+    if (result['success'] == true) {
+      _users = (result['data'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      _error = null;
+    } else {
+      _error = result['error']?.toString() ?? 'Failed to load users';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<bool> toggleUserActive(String userId) async {
+    final result = await _adminService.toggleUserActive(userId);
+    if (result['success'] != true) {
+      _error = result['error']?.toString() ?? 'Failed to toggle user status';
+      notifyListeners();
+      return false;
+    }
+
+    await loadUsers();
     return true;
   }
 
