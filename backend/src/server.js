@@ -4,7 +4,8 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { sql, getPool } = require("./db");
+const { sql, getPool, ensureOtpTable } = require("./db");
+const EmailService = require("./email_service");
 
 const app = express();
 app.use(cors());
@@ -309,6 +310,300 @@ app.get("/api/auth/me", async (req, res) => {
 
     res.json(result.recordset[0]);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.patch("/api/auth/me", async (req, res) => {
+  try {
+    const payload = getTokenPayload(req);
+    if (!payload?.sub) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { fullName, email, phone } = req.body;
+
+    // Validate inputs
+    if (!fullName && !email && !phone === undefined) {
+      return res
+        .status(400)
+        .json({ message: "At least one field is required to update" });
+    }
+
+    const pool = await getPool();
+    const userId = String(payload.sub);
+
+    // Check if new email already exists (if email is being changed)
+    if (email) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const emailCheck = await pool
+        .request()
+        .input("email", sql.NVarChar(150), normalizedEmail)
+        .input("userId", sql.UniqueIdentifier, userId)
+        .query(
+          `SELECT TOP 1 Id FROM dbo.Users WHERE Email = @email AND Id != @userId`,
+        );
+
+      if (emailCheck.recordset.length > 0) {
+        return res.status(409).json({ message: "Email already in use" });
+      }
+    }
+
+    // Update user profile
+    const updateRequest = pool
+      .request()
+      .input("id", sql.UniqueIdentifier, userId);
+
+    if (fullName !== undefined) {
+      updateRequest.input(
+        "fullName",
+        sql.NVarChar(120),
+        String(fullName).trim(),
+      );
+    }
+    if (email !== undefined) {
+      updateRequest.input(
+        "email",
+        sql.NVarChar(150),
+        String(email).trim().toLowerCase(),
+      );
+    }
+    if (phone !== undefined) {
+      updateRequest.input(
+        "phone",
+        sql.NVarChar(20),
+        phone ? String(phone).trim() : null,
+      );
+    }
+
+    const setClauses = [];
+    if (fullName !== undefined) setClauses.push("FullName = @fullName");
+    if (email !== undefined) setClauses.push("Email = @email");
+    if (phone !== undefined) setClauses.push("Phone = @phone");
+    setClauses.push("UpdatedAt = SYSUTCDATETIME()");
+
+    const updateQuery = `UPDATE dbo.Users
+                        SET ${setClauses.join(", ")}
+                        WHERE Id = @id
+                        
+                        SELECT TOP 1 Id, FullName, Email, Phone, Role, IsActive
+                        FROM dbo.Users
+                        WHERE Id = @id AND IsActive = 1`;
+
+    const result = await updateRequest.query(updateQuery);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "Profile updated successfully",
+      user: result.recordset[0],
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/api/auth/logout", requireAuth, (_req, res) => {
+  try {
+    // Logout is primarily handled on the frontend by deleting the token
+    // This endpoint just confirms the logout action
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// OTP Email Verification Endpoints
+app.post("/api/auth/send-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const pool = await getPool();
+
+    // Check if user exists
+    const userResult = await pool
+      .request()
+      .input("email", sql.NVarChar(255), normalizedEmail)
+      .query("SELECT Id, FullName, Email FROM dbo.Users WHERE Email = @email");
+
+    if (userResult.recordset.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = userResult.recordset[0];
+
+    // Generate 6-digit OTP
+    const otpLength = Number(process.env.OTP_LENGTH || 6);
+    const otpMin = 10 ** Math.max(otpLength - 1, 0);
+    const otpMax = 10 ** otpLength - 1;
+    const otp = Math.floor(
+      otpMin + Math.random() * (otpMax - otpMin + 1),
+    ).toString();
+    const otpExpiration = new Date(
+      Date.now() + parseInt(process.env.OTP_EXPIRATION_TIME || 300, 10) * 1000,
+    );
+
+    // Save OTP to database
+    await pool
+      .request()
+      .input("userId", sql.UniqueIdentifier, user.Id)
+      .input("email", sql.NVarChar(255), normalizedEmail)
+      .input("otpCode", sql.NVarChar(10), otp)
+      .input("expiresAt", sql.DateTime2, otpExpiration)
+      .input(
+        "maxAttempts",
+        sql.Int,
+        parseInt(process.env.OTP_MAX_ATTEMPTS || 3, 10),
+      ).query(`
+        DELETE FROM dbo.UserOTP WHERE UserId = @userId AND GETUTCDATE() < ExpiresAt AND IsExpired = 0;
+        INSERT INTO dbo.UserOTP (UserId, Email, OTPCode, Attempts, MaxAttempts, IsVerified, IsExpired, CreatedAt, ExpiresAt)
+        VALUES (@userId, @email, @otpCode, 0, @maxAttempts, 0, 0, GETUTCDATE(), @expiresAt)
+      `);
+
+    // Send OTP email
+    const emailService = new EmailService();
+    const emailResult = await emailService.sendOtpEmail(
+      normalizedEmail,
+      otp,
+      user.FullName,
+    );
+
+    if (!emailResult.success) {
+      return res.status(500).json({ message: "Failed to send OTP email" });
+    }
+
+    res.json({
+      message: "OTP sent successfully",
+      expiresIn: parseInt(process.env.OTP_EXPIRATION_TIME || 300, 10),
+    });
+  } catch (error) {
+    console.error("Send OTP error:", error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/api/auth/verify-otp", async (req, res) => {
+  try {
+    const { email, otpCode } = req.body;
+
+    if (!email || !otpCode) {
+      return res
+        .status(400)
+        .json({ message: "Email and OTP code are required" });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedOtpCode = String(otpCode).trim();
+    const pool = await getPool();
+
+    // Get user by email
+    const userResult = await pool
+      .request()
+      .input("email", sql.NVarChar(255), normalizedEmail)
+      .query("SELECT Id, FullName, Email FROM dbo.Users WHERE Email = @email");
+
+    if (userResult.recordset.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const user = userResult.recordset[0];
+
+    // Get OTP record
+    const otpResult = await pool
+      .request()
+      .input("userId", sql.UniqueIdentifier, user.Id)
+      .input("email", sql.NVarChar(255), normalizedEmail).query(`
+        SELECT Id, OTPCode, Attempts, MaxAttempts, IsExpired, ExpiresAt, IsVerified
+        FROM dbo.UserOTP 
+        WHERE UserId = @userId AND Email = @email AND IsVerified = 0 AND IsExpired = 0
+        ORDER BY CreatedAt DESC
+      `);
+
+    if (otpResult.recordset.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "OTP not found or already expired" });
+    }
+
+    const otpRecord = otpResult.recordset[0];
+
+    // Check if OTP is expired
+    if (new Date() > new Date(otpRecord.ExpiresAt)) {
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, otpRecord.Id)
+        .query("UPDATE dbo.UserOTP SET IsExpired = 1 WHERE Id = @id");
+      return res.status(400).json({ message: "OTP has expired" });
+    }
+
+    // Check max attempts
+    if (otpRecord.Attempts >= otpRecord.MaxAttempts) {
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, otpRecord.Id)
+        .query("UPDATE dbo.UserOTP SET IsExpired = 1 WHERE Id = @id");
+      return res
+        .status(400)
+        .json({
+          message: "Maximum OTP attempts exceeded. Please request a new OTP.",
+        });
+    }
+
+    // Verify OTP code
+    if (otpRecord.OTPCode !== normalizedOtpCode) {
+      // Increment attempts
+      await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, otpRecord.Id)
+        .input("newAttempts", sql.Int, otpRecord.Attempts + 1)
+        .query("UPDATE dbo.UserOTP SET Attempts = @newAttempts WHERE Id = @id");
+
+      const remainingAttempts = otpRecord.MaxAttempts - otpRecord.Attempts - 1;
+      return res.status(400).json({
+        message: "Invalid OTP code",
+        remainingAttempts,
+      });
+    }
+
+    // OTP is valid, mark as verified
+    await pool
+      .request()
+      .input("id", sql.UniqueIdentifier, otpRecord.Id)
+      .query(
+        "UPDATE dbo.UserOTP SET IsVerified = 1, VerifiedAt = GETUTCDATE() WHERE Id = @id",
+      );
+
+    // Generate JWT token for verified identity
+    const token = jwt.sign(
+      { sub: user.Id, email: user.Email, type: "otp-verified" },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+
+    res.json({
+      message: "OTP verified successfully",
+      token,
+      user: {
+        id: user.Id,
+        email: user.Email,
+        fullName: user.FullName,
+      },
+    });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -1056,11 +1351,9 @@ app.post("/api/products/:id/reviews", async (req, res) => {
       );
 
     if (purchasedResult.recordset.length === 0) {
-      return res
-        .status(403)
-        .json({
-          message: "Only customers who purchased can review this product",
-        });
+      return res.status(403).json({
+        message: "Only customers who purchased can review this product",
+      });
     }
 
     const existed = await pool
@@ -1764,4 +2057,7 @@ app.patch("/api/orders/:id/status", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`API is running on http://localhost:${PORT}`);
+  ensureOtpTable().catch((error) => {
+    console.error("Failed to ensure UserOTP table:", error.message);
+  });
 });
