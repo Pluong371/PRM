@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../common/providers/order_provider.dart';
+import '../../../../common/services/order_service.dart';
 import '../../../../common/models/order_model.dart';
+import 'order_detail_page.dart';
 
 class OrderHistoryPage extends StatefulWidget {
   final OrderProvider orderProvider;
+  final OrderService orderService;
 
   const OrderHistoryPage({
     Key? key,
     required this.orderProvider,
+    required this.orderService,
   }) : super(key: key);
 
   @override
@@ -116,6 +120,7 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                           builder: (context) => OrderDetailPage(
                             orderId: order.id,
                             orderProvider: orderProvider,
+                            orderService: widget.orderService,
                           ),
                         ),
                       );
