@@ -18,7 +18,10 @@ class CartPage extends StatefulWidget {
 
 class _CartPageState extends State<CartPage> {
   late TextEditingController _addressController;
+<<<<<<< HEAD
   late TextEditingController _couponController;
+=======
+>>>>>>> LuongPM
   String _selectedPaymentMethod = 'credit_card';
   bool _isLoading = false;
 
@@ -26,13 +29,19 @@ class _CartPageState extends State<CartPage> {
   void initState() {
     super.initState();
     _addressController = TextEditingController();
+<<<<<<< HEAD
     _couponController = TextEditingController();
+=======
+>>>>>>> LuongPM
   }
 
   @override
   void dispose() {
     _addressController.dispose();
+<<<<<<< HEAD
     _couponController.dispose();
+=======
+>>>>>>> LuongPM
     super.dispose();
   }
 
@@ -69,7 +78,11 @@ class _CartPageState extends State<CartPage> {
         shippingAddress: _addressController.text,
         paymentMethod: _selectedPaymentMethod,
         subtotal: cart.subtotal,
+<<<<<<< HEAD
         discountAmount: cart.discountAmount,
+=======
+        discountAmount: 0,
+>>>>>>> LuongPM
         total: cart.total,
         items: cart.items.map((item) => item.toJson()).toList(),
       );
@@ -175,12 +188,15 @@ class _CartPageState extends State<CartPage> {
                         label: 'Subtotal',
                         value: '\$${cart.subtotal.toStringAsFixed(2)}',
                       ),
+<<<<<<< HEAD
                       if (cart.appliedCouponCode != null)
                         _SummaryRow(
                           label: 'Discount (${cart.discountPercent.toStringAsFixed(0)}%)',
                           value: '-\$${cart.discountAmount.toStringAsFixed(2)}',
                           highlight: true,
                         ),
+=======
+>>>>>>> LuongPM
                       _SummaryRow(
                         label: 'Tax (10%)',
                         value: '\$${cart.estimatedTax.toStringAsFixed(2)}',
@@ -203,6 +219,7 @@ class _CartPageState extends State<CartPage> {
                 ),
                 const Divider(),
 
+<<<<<<< HEAD
                 // Coupon Section
                 Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -309,6 +326,8 @@ class _CartPageState extends State<CartPage> {
                 ),
                 const Divider(),
 
+=======
+>>>>>>> LuongPM
                 // Checkout Form
                 Padding(
                   padding: const EdgeInsets.all(16.0),

@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+<<<<<<< HEAD
 import 'package:provider/provider.dart';
+=======
+>>>>>>> LuongPM
 import 'package:frontend/core/constants/app_colors.dart';
 import 'package:frontend/core/widgets/loading_widget.dart';
 import 'package:frontend/core/widgets/error_widget.dart';
@@ -10,9 +13,13 @@ import 'package:frontend/injection_container.dart';
 import 'package:frontend/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:frontend/features/product/presentation/bloc/product_bloc.dart';
 import 'package:frontend/features/product/presentation/widgets/product_card.dart';
+<<<<<<< HEAD
 import 'package:frontend/features/product/presentation/widgets/filter_dialog.dart';
 import 'package:frontend/features/product/data/models/product_model.dart';
 import 'package:frontend/common/providers/product_provider.dart';
+=======
+import 'package:frontend/features/product/data/models/product_model.dart';
+>>>>>>> LuongPM
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -68,6 +75,7 @@ class _HomePageViewState extends State<_HomePageView> {
       ),
       body: Column(
         children: [
+<<<<<<< HEAD
           // Search Bar with Filter
           Container(
             color: AppColors.primary,
@@ -135,6 +143,41 @@ class _HomePageViewState extends State<_HomePageView> {
                   ),
                 ),
               ],
+=======
+          // Search Bar
+          Container(
+            color: AppColors.primary,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Tìm kiếm sản phẩm...',
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: AppColors.textSecondary,
+                ),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 20),
+                        onPressed: () {
+                          _searchController.clear();
+                          context.read<ProductBloc>().add(
+                            const SearchProductsEvent(query: ''),
+                          );
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+>>>>>>> LuongPM
             ),
           ),
 

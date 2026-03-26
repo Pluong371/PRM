@@ -555,9 +555,17 @@ app.post("/api/auth/verify-otp", async (req, res) => {
         .request()
         .input("id", sql.UniqueIdentifier, otpRecord.Id)
         .query("UPDATE dbo.UserOTP SET IsExpired = 1 WHERE Id = @id");
+<<<<<<< HEAD
       return res.status(400).json({
         message: "Maximum OTP attempts exceeded. Please request a new OTP.",
       });
+=======
+      return res
+        .status(400)
+        .json({
+          message: "Maximum OTP attempts exceeded. Please request a new OTP.",
+        });
+>>>>>>> LuongPM
     }
 
     // Verify OTP code
@@ -921,6 +929,7 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // Advanced Product Search with Filters
 app.get("/api/products/search/advanced", async (req, res) => {
   try {
@@ -1093,6 +1102,8 @@ app.get("/api/products/search/advanced", async (req, res) => {
   }
 });
 
+=======
+>>>>>>> LuongPM
 app.put("/api/products/:id", async (req, res) => {
   try {
     const { id } = req.params;
