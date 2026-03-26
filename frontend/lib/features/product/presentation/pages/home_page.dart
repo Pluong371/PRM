@@ -5,7 +5,11 @@ import 'package:go_router/go_router.dart';
 <<<<<<< HEAD
 import 'package:provider/provider.dart';
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 import 'package:frontend/core/constants/app_colors.dart';
 import 'package:frontend/core/widgets/loading_widget.dart';
 import 'package:frontend/core/widgets/error_widget.dart';
@@ -19,7 +23,11 @@ import 'package:frontend/features/product/data/models/product_model.dart';
 import 'package:frontend/common/providers/product_provider.dart';
 =======
 import 'package:frontend/features/product/data/models/product_model.dart';
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -177,7 +185,11 @@ class _HomePageViewState extends State<_HomePageView> {
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
             ),
           ),
 

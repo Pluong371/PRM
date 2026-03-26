@@ -24,7 +24,11 @@ class ProductProvider extends ChangeNotifier {
   int _currentPage = 1;
   int _totalPages = 1;
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
   ProductProvider({
     ProductService? productService,
@@ -37,7 +41,11 @@ class ProductProvider extends ChangeNotifier {
 <<<<<<< HEAD
 =======
   List<Product> get products => List.unmodifiable(_allProducts);
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   List<Product> get filteredProducts => List.unmodifiable(_filteredProducts);
   Product? get selectedProduct => _selectedProduct;
   bool get isLoading => _isLoading;
@@ -62,7 +70,11 @@ class ProductProvider extends ChangeNotifier {
 
   /// Fetch all products from API
   Future<void> fetchProducts({String? token}) async {
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -99,7 +111,11 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   /// Get product details by ID
   Future<void> fetchProductById(String productId) async {
     _isLoading = true;
@@ -337,5 +353,9 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 }

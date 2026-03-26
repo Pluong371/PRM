@@ -14,7 +14,11 @@ import '../../../../common/models/order_model.dart';
 
 class OrderHistoryPage extends StatefulWidget {
   final OrderProvider orderProvider;
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
   const OrderHistoryPage({
     Key? key,
@@ -22,7 +26,11 @@ class OrderHistoryPage extends StatefulWidget {
 <<<<<<< HEAD
     required this.orderService,
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   }) : super(key: key);
 
   @override
@@ -133,7 +141,11 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
 <<<<<<< HEAD
                             orderService: widget.orderService,
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
                           ),
                         ),
                       );

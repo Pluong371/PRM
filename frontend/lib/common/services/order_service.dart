@@ -2,7 +2,11 @@ import 'package:dio/dio.dart';
 <<<<<<< HEAD
 =======
 import 'package:uuid/uuid.dart';
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 import '../models/order_model.dart';
 
 class OrderService {
@@ -87,7 +91,11 @@ class OrderService {
         return {
           'success': true,
           'data': found.first,
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
         };
       }
       return {
@@ -181,7 +189,11 @@ class OrderService {
   String _generateGuid() {
     const uuid = Uuid();
     return uuid.v4();
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   }
 
   String _generateOrderCode() {

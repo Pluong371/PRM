@@ -21,7 +21,11 @@ class _CartPageState extends State<CartPage> {
 <<<<<<< HEAD
   late TextEditingController _couponController;
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   String _selectedPaymentMethod = 'credit_card';
   bool _isLoading = false;
 
@@ -32,7 +36,11 @@ class _CartPageState extends State<CartPage> {
 <<<<<<< HEAD
     _couponController = TextEditingController();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   }
 
   @override
@@ -41,7 +49,11 @@ class _CartPageState extends State<CartPage> {
 <<<<<<< HEAD
     _couponController.dispose();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
     super.dispose();
   }
 
@@ -82,7 +94,11 @@ class _CartPageState extends State<CartPage> {
         discountAmount: cart.discountAmount,
 =======
         discountAmount: 0,
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
         total: cart.total,
         items: cart.items.map((item) => item.toJson()).toList(),
       );
@@ -196,7 +212,11 @@ class _CartPageState extends State<CartPage> {
                           highlight: true,
                         ),
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
                       _SummaryRow(
                         label: 'Tax (10%)',
                         value: '\$${cart.estimatedTax.toStringAsFixed(2)}',
@@ -327,7 +347,11 @@ class _CartPageState extends State<CartPage> {
                 const Divider(),
 
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
                 // Checkout Form
                 Padding(
                   padding: const EdgeInsets.all(16.0),

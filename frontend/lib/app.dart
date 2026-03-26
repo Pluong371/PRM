@@ -29,7 +29,11 @@ class ShopWebApp extends StatelessWidget {
           create: (_) => CartProvider()..loadCart(),
 =======
           create: (_) => CartProvider(),
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
         ),
         ChangeNotifierProvider(
           create: (_) => AdminProvider(),

@@ -39,7 +39,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           matches.isNotEmpty ? matches.first : productProvider.selectedProduct;
       if (selected != null && selected.id == widget.productId) {
         productProvider.selectProduct(selected);
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
       }
     });
   }

@@ -4,7 +4,11 @@ import 'package:frontend/core/network/dio_client.dart';
 <<<<<<< HEAD
 import 'package:frontend/common/services/cart_storage_service.dart';
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
 // Auth
 import 'package:frontend/features/auth/data/datasources/auth_remote_datasource.dart';
@@ -31,7 +35,11 @@ Future<void> initDependencies() async {
   await CartStorageService.init();
 
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   // ─── Auth ───
   sl.registerLazySingleton<AuthRemoteDataSource>(
     () => AuthRemoteDataSource(dioClient: sl()),

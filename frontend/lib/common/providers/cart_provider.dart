@@ -4,7 +4,11 @@ import '../models/product_model.dart';
 import '../services/cart_storage_service.dart';
 import '../services/coupon_service.dart';
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
 class CartItem {
   final String productId;
@@ -72,7 +76,11 @@ class CartProvider extends ChangeNotifier {
   double _discountAmount = 0.0;
   final CouponService _couponService = CouponService();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
   List<CartItem> get items => List.unmodifiable(_items);
   int get itemCount => _items.length;
@@ -131,7 +139,11 @@ class CartProvider extends ChangeNotifier {
   double get estimatedTax => subtotal * 0.1; // 10% tax
   double get shippingFee => subtotal > 100 ? 0 : 5.0; // Free shipping over $100
   double get total => subtotal + estimatedTax + shippingFee;
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
 
   /// Add item to cart or update quantity if exists
   void addItem(CartItem item) {
@@ -150,7 +162,11 @@ class CartProvider extends ChangeNotifier {
 <<<<<<< HEAD
     _saveCart();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
     notifyListeners();
   }
 
@@ -165,7 +181,11 @@ class CartProvider extends ChangeNotifier {
 <<<<<<< HEAD
       _saveCart();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
       notifyListeners();
     }
   }
@@ -177,7 +197,11 @@ class CartProvider extends ChangeNotifier {
 <<<<<<< HEAD
     _saveCart();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
     notifyListeners();
   }
 
@@ -187,7 +211,11 @@ class CartProvider extends ChangeNotifier {
 <<<<<<< HEAD
     _saveCart();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
     notifyListeners();
   }
 
@@ -197,7 +225,11 @@ class CartProvider extends ChangeNotifier {
 <<<<<<< HEAD
     _saveCart();
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
     notifyListeners();
   }
 
@@ -292,7 +324,11 @@ class CartProvider extends ChangeNotifier {
   }
 
 =======
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
   /// Get cart summary for display
   Map<String, dynamic> getSummary() {
     return {
@@ -309,7 +345,11 @@ class CartProvider extends ChangeNotifier {
       'tax': estimatedTax,
       'shipping': shippingFee,
       'total': total,
+<<<<<<< HEAD
 >>>>>>> LuongPM
+=======
+>>>>>>> origin/LuongPM
+>>>>>>> 45345617193801595aa0abe962c928ce91c129d9
       'items': items,
     };
   }
