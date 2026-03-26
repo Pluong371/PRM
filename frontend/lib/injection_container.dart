@@ -1,7 +1,10 @@
 import 'package:get_it/get_it.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:frontend/core/network/dio_client.dart';
+<<<<<<< HEAD
 import 'package:frontend/common/services/cart_storage_service.dart';
+=======
+>>>>>>> origin/LuongPM
 
 // Auth
 import 'package:frontend/features/auth/data/datasources/auth_remote_datasource.dart';
@@ -23,9 +26,12 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<FlutterSecureStorage>(() => storage);
   sl.registerLazySingleton<DioClient>(() => DioClient(sl()));
 
+<<<<<<< HEAD
   // ─── Cart Storage ───
   await CartStorageService.init();
 
+=======
+>>>>>>> origin/LuongPM
   // ─── Auth ───
   sl.registerLazySingleton<AuthRemoteDataSource>(
     () => AuthRemoteDataSource(dioClient: sl()),

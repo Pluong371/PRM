@@ -157,6 +157,7 @@ class ProductService {
       };
     }
   }
+<<<<<<< HEAD
 
   /// Advanced search with filters
   Future<Map<String, dynamic>> searchAdvanced({
@@ -215,4 +216,6 @@ class ProductService {
       };
     }
   }
+=======
+>>>>>>> origin/LuongPM
 }

@@ -188,7 +188,10 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
           products: products,
           categories: categories,
           selectedCategoryId: event.categoryId,
+<<<<<<< HEAD
           clearCategory: event.categoryId == null,
+=======
+>>>>>>> origin/LuongPM
         ),
       );
     } on ServerException catch (e) {

@@ -1,7 +1,10 @@
 import 'package:flutter/foundation.dart';
 import '../models/product_model.dart';
+<<<<<<< HEAD
 import '../services/cart_storage_service.dart';
 import '../services/coupon_service.dart';
+=======
+>>>>>>> origin/LuongPM
 
 class CartItem {
   final String productId;
@@ -59,6 +62,7 @@ class CartItem {
 
 class CartProvider extends ChangeNotifier {
   final List<CartItem> _items = [];
+<<<<<<< HEAD
   bool _isLoading = false;
   String? _error;
   
@@ -67,10 +71,13 @@ class CartProvider extends ChangeNotifier {
   double _discountPercent = 0.0;
   double _discountAmount = 0.0;
   final CouponService _couponService = CouponService();
+=======
+>>>>>>> origin/LuongPM
 
   List<CartItem> get items => List.unmodifiable(_items);
   int get itemCount => _items.length;
   int get totalQuantity => _items.fold(0, (sum, item) => sum + item.quantity);
+<<<<<<< HEAD
   bool get isLoading => _isLoading;
   String? get error => _error;
   
@@ -118,6 +125,13 @@ class CartProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+=======
+
+  double get subtotal => _items.fold(0, (sum, item) => sum + item.lineTotal);
+  double get estimatedTax => subtotal * 0.1; // 10% tax
+  double get shippingFee => subtotal > 100 ? 0 : 5.0; // Free shipping over $100
+  double get total => subtotal + estimatedTax + shippingFee;
+>>>>>>> origin/LuongPM
 
   /// Add item to cart or update quantity if exists
   void addItem(CartItem item) {
@@ -133,7 +147,10 @@ class CartProvider extends ChangeNotifier {
     } else {
       _items.add(item);
     }
+<<<<<<< HEAD
     _saveCart();
+=======
+>>>>>>> origin/LuongPM
     notifyListeners();
   }
 
@@ -145,7 +162,10 @@ class CartProvider extends ChangeNotifier {
       removeItem(index);
     } else {
       _items[index].quantity = quantity;
+<<<<<<< HEAD
       _saveCart();
+=======
+>>>>>>> origin/LuongPM
       notifyListeners();
     }
   }
@@ -154,21 +174,30 @@ class CartProvider extends ChangeNotifier {
   void removeItem(int index) {
     if (index < 0 || index >= _items.length) return;
     _items.removeAt(index);
+<<<<<<< HEAD
     _saveCart();
+=======
+>>>>>>> origin/LuongPM
     notifyListeners();
   }
 
   /// Remove item by product ID
   void removeItemByProductId(String productId) {
     _items.removeWhere((item) => item.productId == productId);
+<<<<<<< HEAD
     _saveCart();
+=======
+>>>>>>> origin/LuongPM
     notifyListeners();
   }
 
   /// Clear entire cart
   void clear() {
     _items.clear();
+<<<<<<< HEAD
     _saveCart();
+=======
+>>>>>>> origin/LuongPM
     notifyListeners();
   }
 
@@ -210,6 +239,7 @@ class CartProvider extends ChangeNotifier {
     };
   }
 
+<<<<<<< HEAD
   /// Apply coupon code to cart
   Future<Map<String, dynamic>> applyCoupon(String couponCode) async {
     try {
@@ -261,17 +291,25 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+=======
+>>>>>>> origin/LuongPM
   /// Get cart summary for display
   Map<String, dynamic> getSummary() {
     return {
       'itemCount': itemCount,
       'totalQuantity': totalQuantity,
       'subtotal': subtotal,
+<<<<<<< HEAD
       'discountAmount': _discountAmount,
       'tax': estimatedTax,
       'shipping': shippingFee,
       'total': total,
       'appliedCoupon': _appliedCouponCode,
+=======
+      'tax': estimatedTax,
+      'shipping': shippingFee,
+      'total': total,
+>>>>>>> origin/LuongPM
       'items': items,
     };
   }

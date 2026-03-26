@@ -1,4 +1,8 @@
 import 'package:dio/dio.dart';
+<<<<<<< HEAD
+=======
+import 'package:uuid/uuid.dart';
+>>>>>>> origin/LuongPM
 import '../models/order_model.dart';
 
 class OrderService {
@@ -57,6 +61,7 @@ class OrderService {
   /// Get order by ID
   Future<Map<String, dynamic>> getOrderById(String orderId) async {
     try {
+<<<<<<< HEAD
       final response = await dio.get(
         '$baseUrl/api/orders/$orderId',
       );
@@ -65,6 +70,24 @@ class OrderService {
         return {
           'success': true,
           'data': Order.fromJson(response.data),
+=======
+      final response = await dio.get('$baseUrl/api/orders');
+
+      if (response.statusCode == 200) {
+        final orders = (response.data as List)
+            .map((item) => Order.fromJson(item as Map<String, dynamic>))
+            .toList();
+        final found = orders.where((o) => o.id == orderId).toList();
+        if (found.isEmpty) {
+          return {
+            'success': false,
+            'error': 'Order not found',
+          };
+        }
+        return {
+          'success': true,
+          'data': found.first,
+>>>>>>> origin/LuongPM
         };
       }
       return {
@@ -130,6 +153,7 @@ class OrderService {
     }
   }
 
+<<<<<<< HEAD
   /// Cancel order (user can only cancel processing orders)
   Future<Map<String, dynamic>> cancelOrder(String orderId) async {
     try {
@@ -153,6 +177,11 @@ class OrderService {
 
   String _generateGuid() {
     return '${DateTime.now().millisecondsSinceEpoch}-${(DateTime.now().microsecond).toString().padLeft(6, '0')}';
+=======
+  String _generateGuid() {
+    const uuid = Uuid();
+    return uuid.v4();
+>>>>>>> origin/LuongPM
   }
 
   String _generateOrderCode() {

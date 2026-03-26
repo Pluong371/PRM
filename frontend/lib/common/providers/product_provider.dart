@@ -16,12 +16,15 @@ class ProductProvider extends ChangeNotifier {
   // Filters
   String? _selectedCategory;
   String _searchQuery = '';
+<<<<<<< HEAD
   double _minPrice = 0;
   double _maxPrice = 999999;
   bool _inStockOnly = false;
   String _sortBy = 'newest';
   int _currentPage = 1;
   int _totalPages = 1;
+=======
+>>>>>>> origin/LuongPM
 
   ProductProvider({
     ProductService? productService,
@@ -31,10 +34,15 @@ class ProductProvider extends ChangeNotifier {
 
   // Getters
   List<Product> get allProducts => List.unmodifiable(_allProducts);
+<<<<<<< HEAD
+=======
+  List<Product> get products => List.unmodifiable(_allProducts);
+>>>>>>> origin/LuongPM
   List<Product> get filteredProducts => List.unmodifiable(_filteredProducts);
   Product? get selectedProduct => _selectedProduct;
   bool get isLoading => _isLoading;
   String? get error => _error;
+<<<<<<< HEAD
   String? get selectedCategory => _selectedCategory;
   String get searchQuery => _searchQuery;
   double get minPrice => _minPrice;
@@ -46,6 +54,15 @@ class ProductProvider extends ChangeNotifier {
 
   /// Fetch all products from API
   Future<void> fetchProducts() async {
+=======
+  String? get errorMessage => _error;
+  String? get selectedCategory => _selectedCategory;
+  String get searchQuery => _searchQuery;
+  List<String> get categories => getCategories();
+
+  /// Fetch all products from API
+  Future<void> fetchProducts({String? token}) async {
+>>>>>>> origin/LuongPM
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -67,6 +84,22 @@ class ProductProvider extends ChangeNotifier {
     }
   }
 
+<<<<<<< HEAD
+=======
+  void setSearchQuery(String query) {
+    searchProducts(query);
+  }
+
+  void setSelectedCategory(String? category) {
+    filterByCategory(category);
+  }
+
+  void selectProduct(Product product) {
+    _selectedProduct = product;
+    notifyListeners();
+  }
+
+>>>>>>> origin/LuongPM
   /// Get product details by ID
   Future<void> fetchProductById(String productId) async {
     _isLoading = true;
@@ -234,6 +267,7 @@ class ProductProvider extends ChangeNotifier {
     );
     return sum / _filteredProducts.length;
   }
+<<<<<<< HEAD
 
   /// Advanced search with filters
   Future<void> searchAdvanced({
@@ -302,4 +336,6 @@ class ProductProvider extends ChangeNotifier {
     _sortBy = sortOption;
     notifyListeners();
   }
+=======
+>>>>>>> origin/LuongPM
 }
