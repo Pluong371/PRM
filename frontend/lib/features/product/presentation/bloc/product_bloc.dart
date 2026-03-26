@@ -188,7 +188,6 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
           products: products,
           categories: categories,
           selectedCategoryId: event.categoryId,
-          clearCategory: event.categoryId == null,
         ),
       );
     } on ServerException catch (e) {

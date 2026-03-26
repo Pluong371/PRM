@@ -25,15 +25,18 @@ class ProductProvider extends ChangeNotifier {
 
   // Getters
   List<Product> get allProducts => List.unmodifiable(_allProducts);
+  List<Product> get products => List.unmodifiable(_allProducts);
   List<Product> get filteredProducts => List.unmodifiable(_filteredProducts);
   Product? get selectedProduct => _selectedProduct;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  String? get errorMessage => _error;
   String? get selectedCategory => _selectedCategory;
   String get searchQuery => _searchQuery;
+  List<String> get categories => getCategories();
 
   /// Fetch all products from API
-  Future<void> fetchProducts() async {
+  Future<void> fetchProducts({String? token}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -53,6 +56,19 @@ class ProductProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  void setSearchQuery(String query) {
+    searchProducts(query);
+  }
+
+  void setSelectedCategory(String? category) {
+    filterByCategory(category);
+  }
+
+  void selectProduct(Product product) {
+    _selectedProduct = product;
+    notifyListeners();
   }
 
   /// Get product details by ID

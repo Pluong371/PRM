@@ -22,14 +22,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final productProvider = context.read<ProductProvider>();
-      // Try to find in existing products first
-      final existingProduct = productProvider.products.firstWhere(
-        (p) => p.id == widget.productId,
-        orElse: () => productProvider.selectedProduct ??
-            (productProvider.products.isNotEmpty ? productProvider.products.first : null),
-      );
-      if (existingProduct != null && existingProduct.id == widget.productId) {
-        productProvider.selectProduct(existingProduct);
+      final matches = productProvider.products
+          .where((p) => p.id == widget.productId)
+          .toList();
+      final selected =
+          matches.isNotEmpty ? matches.first : productProvider.selectedProduct;
+      if (selected != null && selected.id == widget.productId) {
+        productProvider.selectProduct(selected);
       }
     });
   }

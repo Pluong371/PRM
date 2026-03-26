@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
 import '../models/order_model.dart';
 
 class OrderService {
@@ -57,14 +58,22 @@ class OrderService {
   /// Get order by ID
   Future<Map<String, dynamic>> getOrderById(String orderId) async {
     try {
-      final response = await dio.get(
-        '$baseUrl/api/orders/$orderId',
-      );
+      final response = await dio.get('$baseUrl/api/orders');
 
       if (response.statusCode == 200) {
+        final orders = (response.data as List)
+            .map((item) => Order.fromJson(item as Map<String, dynamic>))
+            .toList();
+        final found = orders.where((o) => o.id == orderId).toList();
+        if (found.isEmpty) {
+          return {
+            'success': false,
+            'error': 'Order not found',
+          };
+        }
         return {
           'success': true,
-          'data': Order.fromJson(response.data),
+          'data': found.first,
         };
       }
       return {
@@ -131,7 +140,8 @@ class OrderService {
   }
 
   String _generateGuid() {
-    return '${DateTime.now().millisecondsSinceEpoch}-${(DateTime.now().microsecond).toString().padLeft(6, '0')}';
+    const uuid = Uuid();
+    return uuid.v4();
   }
 
   String _generateOrderCode() {
